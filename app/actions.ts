@@ -233,14 +233,17 @@ export async function updateLocale(locale: Locale): Promise<ActionState> {
 export async function signIn(formData: FormData) {
   const supabase = await createClient();
   if (!supabase) {
-    redirect("/login?error=Supabase%20не%20настроен");
+    redirect("/login?error=supabase_not_configured");
   }
-  const email = String(formData.get("email"));
-  const password = String(formData.get("password"));
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!email || !password) {
+    redirect("/login?error=missing_credentials");
+  }
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     console.error("Supabase sign in error:", error);
-    redirect(`/login?error=${encodeURIComponent("Неверный email или пароль")}`);
+    redirect("/login?error=invalid_credentials");
   }
   const { error: profileError } = await supabase.rpc("ensure_profile");
   if (profileError) console.error("ensure_profile after sign in error:", profileError);

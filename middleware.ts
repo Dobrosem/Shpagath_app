@@ -1,23 +1,23 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseEnv } from "@/lib/supabase/env";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { url, anonKey, isConfigured } = getSupabaseEnv();
   const isLogin = request.nextUrl.pathname === "/login";
 
-  if (!url || !key) {
+  if (!isConfigured || !url || !anonKey) {
     if (isLogin) return NextResponse.next();
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("error", "Supabase не настроен");
+    loginUrl.searchParams.set("error", "supabase_not_configured");
     return NextResponse.redirect(loginUrl);
   }
 
   let response = NextResponse.next({ request });
-  const supabase = createServerClient(url, key, {
+  const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet: CookieToSet[]) {

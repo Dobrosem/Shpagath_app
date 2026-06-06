@@ -1,8 +1,20 @@
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { signIn } from "@/app/actions";
+import { isSupabaseConfigured } from "@/lib/supabase/server";
+
+const loginErrors: Record<string, string> = {
+  supabase_not_configured: "Supabase не настроен",
+  invalid_credentials: "Неверный email или пароль",
+  missing_credentials: "Введите email и пароль",
+  unknown: "Неизвестная ошибка входа",
+};
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+  const { error: errorCode } = await searchParams;
+  const error = errorCode
+    ? loginErrors[errorCode] ?? loginErrors.unknown
+    : null;
+  const supabaseConfigured = isSupabaseConfigured();
   return <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#060606] p-4">
     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.075),transparent_38%)]" />
     <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-gradient-to-b from-white/10 via-transparent to-transparent" />
@@ -20,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <button className="button-primary mt-6 w-full">Войти</button>
         <p className="mt-5 flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-widest text-zinc-700"><ShieldCheck size={12} /> Доступ по приглашению</p>
       </form>
-      {!process.env.NEXT_PUBLIC_SUPABASE_URL && <p className="mt-4 text-center text-[10px] text-amber-700">Добавьте настройки Supabase в .env.local</p>}
+      {!supabaseConfigured && <p className="mt-4 text-center text-[10px] text-amber-700">Добавьте настройки Supabase в .env.local</p>}
     </section>
   </main>;
 }
