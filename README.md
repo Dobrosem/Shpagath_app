@@ -18,13 +18,18 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Откройте `http://localhost:3000`. Без Supabase-переменных приложение работает в
-demo-режиме с локальными данными. Это удобно только для UI-разработки.
+Откройте `http://localhost:3000`. Без Supabase-переменных закрытые маршруты
+перенаправляют на `/login`, а формы не имитируют успешное сохранение.
 
 ## Настройка Supabase
 
 1. Создайте новый Supabase project.
-2. Выполните `supabase/migrations/001_initial_schema.sql` в SQL Editor.
+2. Выполните миграции в SQL Editor строго по порядку:
+
+```text
+supabase/migrations/001_initial_schema.sql
+supabase/migrations/002_crud_profiles_locale.sql
+```
 3. Создайте пользователей в Authentication > Users. Публичной регистрации в
    приложении нет.
 4. Назначьте первого администратора:
@@ -43,8 +48,9 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-При настроенном Supabase middleware требует авторизацию для всех маршрутов,
-кроме `/login`. RLS остаётся главным уровнем защиты данных.
+Middleware требует авторизацию для всех маршрутов, кроме `/login`. RLS остаётся
+главным уровнем защиты данных. `ensure_profile()` страхует пользователей,
+созданных до установки auth-trigger.
 
 ## Роли и доступ
 
@@ -53,6 +59,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - `manager`: концерты, задачи, промо, контакты и финансы.
 - `pr`: промо и чтение связанных проектов/концертов.
 - `session_musician`, `guest`: только явные разрешения из `entity_access`.
+
+Обычный приглашённый пользователь создаётся с ролью `member`. Старые явно
+назначенные `guest` и `session_musician` сохраняют ограниченный доступ.
+
+## Язык интерфейса
+
+Русский используется по умолчанию. В `Настройки → Язык интерфейса` можно выбрать
+English. Значение сохраняется в `profiles.locale` (`ru` или `en`) и применяется
+к общей навигации, статусам, приоритетам, формам и рабочим страницам.
 
 Точечный доступ выдаётся записью:
 

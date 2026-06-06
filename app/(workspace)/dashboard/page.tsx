@@ -3,13 +3,15 @@ import { AlertTriangle, ArrowRight, CalendarClock, Crosshair, Plus } from "lucid
 import { EventCard, ProjectCard, TaskCard } from "@/components/cards";
 import { Metric, PageHeader, SectionHeader } from "@/components/ui";
 import { activity } from "@/lib/demo-data";
-import { getEvents, getProjects, getTasks } from "@/lib/data";
+import { getEvents, getProfile, getProjects, getTasks } from "@/lib/data";
+import { translator } from "@/lib/i18n";
 
 export default async function DashboardPage() {
-  const [allProjects, allTasks, allEvents] = await Promise.all([getProjects(), getTasks(), getEvents()]);
+  const [allProjects, allTasks, allEvents, profile] = await Promise.all([getProjects(), getTasks(), getEvents(), getProfile()]);
+  const t = translator(profile.locale);
   const overdue = allTasks.filter((task) => task.due_date && new Date(task.due_date) < new Date() && task.status !== "done");
   return <>
-    <PageHeader eyebrow="Командный центр" title="Состояние системы" description="Концерты, релизы и задачи Saphath в одном рабочем контуре."
+    <PageHeader eyebrow={t("page.dashboard.eyebrow")} title={t("page.dashboard.title")} description={t("page.dashboard.description")}
       action={<div className="flex gap-2"><Link href="/tasks" className="button-secondary"><Crosshair size={15} />Мои задачи</Link><Link href="/projects" className="button-primary"><Plus size={15} />Новый проект</Link></div>} />
 
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -1,4 +1,5 @@
 export type Role = "admin" | "member" | "guest" | "session_musician" | "manager" | "pr";
+export type Locale = "ru" | "en";
 export type Status = "idea" | "draft" | "todo" | "demo" | "arrangement" | "recording" | "mixing" | "mastering" | "in_progress" | "waiting" | "review" | "approved" | "done" | "archived" | "cancelled" | "ready" | "live_ready" | "planned" | "announced" | "scheduled" | "published";
 export type Priority = "low" | "normal" | "high" | "critical";
 
@@ -7,6 +8,7 @@ export interface Profile {
   full_name: string;
   email: string;
   role: Role;
+  locale: Locale;
   avatar_url?: string | null;
 }
 
@@ -45,6 +47,9 @@ export interface Song {
   time_signature?: string | null;
   duration?: number | null;
   arrangement_version?: string | null;
+  lyrics?: string | null;
+  description?: string | null;
+  live_version_notes?: string | null;
   materials_count?: number;
 }
 
@@ -69,4 +74,48 @@ export interface Material {
   version?: string | null;
   status: "active" | "outdated" | "draft" | "approved" | "archived";
   notes?: string | null;
+}
+
+export interface Rehearsal {
+  id: string;
+  title: string;
+  starts_at: string;
+  location?: string | null;
+  goals?: string | null;
+  status?: Status;
+}
+
+export interface PromoMaterial {
+  id: string;
+  title: string;
+  type: string;
+  platform?: string | null;
+  status: Status;
+  publish_date?: string | null;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  type: string;
+  city?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  reliability_rating?: number | null;
+}
+
+export interface FinanceRecord {
+  id: string;
+  title: string;
+  type: "income" | "expense";
+  category: string;
+  amount: number;
+  currency: string;
+  date: string;
+}
+
+export interface ActionState {
+  success: boolean;
+  error: string | null;
+  id?: string;
 }

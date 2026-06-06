@@ -1,8 +1,16 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-import { useState } from "react";
-import { createEntity } from "@/app/actions";
+import { AlertCircle, Loader2, Plus, X } from "lucide-react";
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createEntity,
+  createSong,
+  createTask,
+} from "@/app/actions";
+import type { ActionState } from "@/lib/types";
+import { useI18n } from "./i18n-provider";
+import { translateLiteral } from "@/lib/i18n";
 
 interface Field {
   name: string;
@@ -11,26 +19,87 @@ interface Field {
   options?: { value: string; label: string }[];
   required?: boolean;
   placeholder?: string;
+  defaultValue?: string;
+  fullWidth?: boolean;
 }
 
-export function EntityDialog({ title, table, path, fields }: { title: string; table: "projects" | "tasks" | "songs" | "song_materials" | "events" | "promo_materials"; path: string; fields: Field[] }) {
+type EntityTable =
+  | "projects"
+  | "tasks"
+  | "songs"
+  | "song_materials"
+  | "events"
+  | "rehearsals"
+  | "promo_materials"
+  | "contacts"
+  | "finance_records";
+
+const initialActionState: ActionState = { success: false, error: null };
+
+export function EntityDialog({
+  title,
+  table,
+  path,
+  fields,
+  hiddenValues,
+  detailPath,
+}: {
+  title: string;
+  table: EntityTable;
+  path: string;
+  fields: Field[];
+  hiddenValues?: Record<string, string>;
+  detailPath?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const action = createEntity.bind(null, table, path);
+  const router = useRouter();
+  const { locale, t } = useI18n();
+  const text = (value: string) => translateLiteral(locale, value);
+  const action = table === "songs"
+    ? createSong
+    : table === "tasks"
+      ? createTask
+      : createEntity.bind(null, table, path);
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    action,
+    initialActionState,
+  );
+
+  useEffect(() => {
+    if (!state.success) return;
+    setOpen(false);
+    if (detailPath && state.id) {
+      router.push(`${detailPath}/${state.id}`);
+    } else {
+      router.refresh();
+    }
+  }, [detailPath, router, state]);
+
   return <>
-    <button className="button-primary" onClick={() => setOpen(true)}><Plus size={15} />Создать</button>
-    {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => setOpen(false)}>
-      <div className="metal-card max-h-[90vh] w-full max-w-xl overflow-y-auto p-6" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="mb-6 flex items-center justify-between"><div><p className="eyebrow">Новая запись</p><h2 className="font-display text-2xl uppercase text-white">{title}</h2></div><button onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button></div>
-        <form action={async (data) => { await action(data); setOpen(false); }} className="grid gap-4 sm:grid-cols-2">
-          {fields.map((field) => <label key={field.name} className={field.type === "textarea" ? "sm:col-span-2" : ""}>
-            <span className="label">{field.label}</span>
+    <button className="button-primary" onClick={() => setOpen(true)}>
+      <Plus size={15} />{t("common.create")}
+    </button>
+    {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
+      <div className="metal-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mb-6 flex items-center justify-between">
+          <div><p className="eyebrow">{t("common.newRecord")}</p><h2 className="font-display text-2xl uppercase text-white">{text(title)}</h2></div>
+          <button disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
+        </div>
+        <form action={formAction} className="grid gap-4 sm:grid-cols-2">
+          {Object.entries(hiddenValues ?? {}).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+          {fields.map((field) => <label key={field.name} className={field.type === "textarea" || field.fullWidth ? "sm:col-span-2" : ""}>
+            <span className="label">{text(field.label)}</span>
             {field.type === "textarea"
-              ? <textarea name={field.name} required={field.required} placeholder={field.placeholder} className="field min-h-24 resize-y py-3" />
+              ? <textarea name={field.name} required={field.required} defaultValue={field.defaultValue} placeholder={field.placeholder ? text(field.placeholder) : undefined} className="field min-h-24 resize-y py-3" />
               : field.type === "select"
-                ? <select name={field.name} required={field.required} className="field"><option value="">Выберите</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-                : <input name={field.name} required={field.required} placeholder={field.placeholder} type={field.type ?? "text"} className="field" />}
+                ? <select name={field.name} required={field.required} defaultValue={field.defaultValue ?? ""} className="field"><option value="">{t("common.select")}</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{text(option.label)}</option>)}</select>
+                : <input name={field.name} required={field.required} defaultValue={field.defaultValue} placeholder={field.placeholder ? text(field.placeholder) : undefined} type={field.type ?? "text"} className="field" />}
           </label>)}
-          <div className="mt-2 flex justify-end gap-2 sm:col-span-2"><button type="button" className="button-secondary" onClick={() => setOpen(false)}>Отмена</button><button className="button-primary">Сохранить</button></div>
+          {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 sm:col-span-2"><AlertCircle size={15} className="shrink-0" />{state.error}</div>}
+          <div className="mt-2 flex justify-end gap-2 sm:col-span-2">
+            <button disabled={pending} type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
+            <button disabled={pending} className="button-primary">{pending && <Loader2 size={14} className="animate-spin" />}{pending ? t("common.saving") : t("common.save")}</button>
+          </div>
         </form>
       </div>
     </div>}

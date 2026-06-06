@@ -5,13 +5,14 @@ export const demoProfile: Profile = {
   full_name: "Александр Морозов",
   email: "admin@saphath.ru",
   role: "admin",
+  locale: "ru",
 };
 
 export const people: Profile[] = [
   demoProfile,
-  { id: "user-2", full_name: "Михаил Орлов", email: "mikhail@saphath.ru", role: "member" },
-  { id: "user-3", full_name: "Анна Волкова", email: "anna@saphath.ru", role: "pr" },
-  { id: "user-4", full_name: "Илья Ветров", email: "ilya@saphath.ru", role: "manager" },
+  { id: "user-2", full_name: "Михаил Орлов", email: "mikhail@saphath.ru", role: "member", locale: "ru" },
+  { id: "user-3", full_name: "Анна Волкова", email: "anna@saphath.ru", role: "pr", locale: "ru" },
+  { id: "user-4", full_name: "Илья Ветров", email: "ilya@saphath.ru", role: "manager", locale: "ru" },
 ];
 
 export const projects: Project[] = [

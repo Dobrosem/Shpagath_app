@@ -1,18 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, Clock3 } from "lucide-react";
 import type { Priority, Status } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
-
-const statusLabels: Record<string, string> = {
-  idea: "Идея", draft: "Черновик", todo: "К выполнению", in_progress: "В работе",
-  waiting: "Ожидает", review: "На проверке", approved: "Утверждено", done: "Готово",
-  cancelled: "Отменено", archived: "Архив", ready: "Готово", live_ready: "Готово для live",
-  mixing: "Сведение", mastering: "Мастеринг", recording: "Запись", arrangement: "Аранжировка",
-  planned: "Запланирован", announced: "Анонсирован", scheduled: "Запланировано", published: "Опубликовано",
-  active: "Актуально", outdated: "Устарело",
-};
+import { useI18n } from "./i18n-provider";
+import type { TranslationKey } from "@/lib/i18n";
 
 export function StatusBadge({ status }: { status: Status | string }) {
+  const { t } = useI18n();
   const tone = ["done", "approved", "ready", "live_ready", "published", "active"].includes(status)
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
     : ["in_progress", "mixing", "recording", "announced"].includes(status)
@@ -20,15 +16,16 @@ export function StatusBadge({ status }: { status: Status | string }) {
       : ["review", "waiting", "scheduled"].includes(status)
         ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
         : "border-white/10 bg-white/5 text-zinc-300";
-  return <span className={cn("badge", tone)}><i className="h-1.5 w-1.5 rounded-full bg-current" />{statusLabels[status] ?? status}</span>;
+  const key = `status.${status}` as TranslationKey;
+  return <span className={cn("badge", tone)}><i className="h-1.5 w-1.5 rounded-full bg-current" />{t(key)}</span>;
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
+  const { t } = useI18n();
   const tone = priority === "critical" ? "text-red-300 bg-red-500/10 border-red-500/25"
     : priority === "high" ? "text-orange-300 bg-orange-500/10 border-orange-500/25"
       : "text-zinc-400 bg-white/[.03] border-white/10";
-  const label = { low: "Низкий", normal: "Обычный", high: "Высокий", critical: "Критический" }[priority];
-  return <span className={cn("badge", tone)}>{label}</span>;
+  return <span className={cn("badge", tone)}>{t(`priority.${priority}`)}</span>;
 }
 
 export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
@@ -43,9 +40,10 @@ export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: 
 }
 
 export function SectionHeader({ title, href, label = "Смотреть все" }: { title: string; href?: string; label?: string }) {
+  const { t } = useI18n();
   return <div className="mb-4 flex items-center justify-between">
     <h2 className="font-display text-lg font-medium uppercase tracking-[.08em] text-zinc-200">{title}</h2>
-    {href && <Link href={href} className="flex items-center gap-1 text-xs text-zinc-500 transition hover:text-white">{label}<ArrowUpRight size={13} /></Link>}
+    {href && <Link href={href} className="flex items-center gap-1 text-xs text-zinc-500 transition hover:text-white">{label === "Смотреть все" ? t("common.viewAll") : label}<ArrowUpRight size={13} /></Link>}
   </div>;
 }
 
@@ -58,9 +56,10 @@ export function Metric({ label, value, accent, detail }: { label: string; value:
 }
 
 export function DateMeta({ value, time }: { value?: string | null; time?: boolean }) {
+  const { locale } = useI18n();
   return <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
     {time ? <Clock3 size={13} /> : <CalendarDays size={13} />}
-    {formatDate(value, time)}
+    {formatDate(value, time, locale)}
   </span>;
 }
 

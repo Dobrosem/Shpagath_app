@@ -9,7 +9,11 @@ export async function middleware(request: NextRequest) {
   const isLogin = request.nextUrl.pathname === "/login";
 
   if (!url || !key) {
-    return NextResponse.next();
+    if (isLogin) return NextResponse.next();
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("error", "Supabase не настроен");
+    return NextResponse.redirect(loginUrl);
   }
 
   let response = NextResponse.next({ request });

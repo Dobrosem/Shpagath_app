@@ -10,7 +10,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="mb-9 text-center">
         <div className="mx-auto grid h-16 w-16 place-items-center border border-white/15 bg-zinc-950 font-display text-4xl text-white shadow-2xl">S</div>
         <h1 className="mt-5 font-display text-3xl font-semibold uppercase tracking-[.24em] text-white">Saphath</h1>
-        <p className="mt-1 text-[9px] uppercase tracking-[.35em] text-zinc-600">Private workspace</p>
+        <p className="mt-1 text-[9px] uppercase tracking-[.35em] text-zinc-600">Закрытый рабочий портал</p>
       </div>
       <form action={signIn} className="metal-card p-6">
         <div className="mb-6 flex items-center gap-3 border-b border-white/[.06] pb-5"><LockKeyhole size={17} className="text-zinc-500" /><div><p className="text-sm text-zinc-200">Вход в систему</p><p className="mt-0.5 text-[10px] text-zinc-600">Только для участников команды</p></div></div>
@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <button className="button-primary mt-6 w-full">Войти</button>
         <p className="mt-5 flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-widest text-zinc-700"><ShieldCheck size={12} /> Доступ по приглашению</p>
       </form>
-      {!process.env.NEXT_PUBLIC_SUPABASE_URL && <p className="mt-4 text-center text-[10px] text-zinc-700">Demo mode: используйте любые данные</p>}
+      {!process.env.NEXT_PUBLIC_SUPABASE_URL && <p className="mt-4 text-center text-[10px] text-amber-700">Добавьте настройки Supabase в .env.local</p>}
     </section>
   </main>;
 }
