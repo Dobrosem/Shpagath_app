@@ -22,6 +22,7 @@ export default async function TasksPage() {
         { name: "status", label: "Статус", type: "select", defaultValue: "todo", options: [
           { value: "todo", label: "К выполнению" }, { value: "in_progress", label: "В работе" },
           { value: "review", label: "На проверке" }, { value: "done", label: "Готово" },
+          { value: "cancelled", label: "Отменено" },
         ] },
         { name: "priority", label: "Приоритет", type: "select", defaultValue: "normal", options: [
           { value: "low", label: "Низкий" }, { value: "normal", label: "Обычный" },

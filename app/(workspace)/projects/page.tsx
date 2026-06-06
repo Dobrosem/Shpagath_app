@@ -20,6 +20,7 @@ export default async function ProjectsPage() {
         { name: "description", label: "Описание", type: "textarea" }, { name: "status", label: "Статус", type: "select", defaultValue: "idea", options: [
           { value: "idea", label: "Идея" }, { value: "draft", label: "Черновик" }, { value: "in_progress", label: "В работе" },
           { value: "waiting", label: "Ожидание" }, { value: "approved", label: "Утверждено" }, { value: "done", label: "Готово" },
+          { value: "archived", label: "Архив" },
         ] },
         { name: "priority", label: "Приоритет", type: "select", defaultValue: "normal", options: [
           { value: "low", label: "Низкий" }, { value: "normal", label: "Обычный" },

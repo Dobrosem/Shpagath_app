@@ -6,7 +6,7 @@ import type { Event, Project, Song, Task } from "@/lib/types";
 import { DateMeta, PriorityBadge, StatusBadge } from "./ui";
 import { formatDate, initials } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
-import { translateLiteral } from "@/lib/i18n";
+import { translateEnum } from "@/lib/i18n";
 
 export function TaskCard({ task, compact = false }: { task: Task; compact?: boolean }) {
   return <article className="group rounded-xl border border-white/[.07] bg-white/[.018] p-4 transition hover:border-white/15 hover:bg-white/[.035]">
@@ -28,7 +28,7 @@ export function TaskCard({ task, compact = false }: { task: Task; compact?: bool
 
 export function ProjectCard({ project }: { project: Project }) {
   const { locale } = useI18n();
-  const projectType = translateLiteral(locale, project.type);
+  const projectType = translateEnum(locale, project.type);
   return <Link href={`/projects/${project.id}`} className="metal-card group block p-5 transition hover:-translate-y-0.5 hover:border-white/15">
     <div className="flex items-start justify-between gap-4">
       <div className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[.03]"><Building2 size={18} className="text-zinc-400" /></div>
@@ -68,7 +68,7 @@ export function EventCard({ event }: { event: Event }) {
       <span className="mt-1 text-[10px] text-zinc-700">{date.getFullYear()}</span>
     </div>
     <div className="flex min-w-0 flex-1 flex-col p-5">
-      <div className="flex items-center justify-between"><StatusBadge status={event.status} /><ArrowUpRight size={15} className="text-zinc-700 group-hover:text-zinc-300" /></div>
+      <div className="flex items-center justify-between"><StatusBadge status={event.status} context="event" /><ArrowUpRight size={15} className="text-zinc-700 group-hover:text-zinc-300" /></div>
       <h3 className="mt-4 truncate font-display text-xl uppercase text-zinc-100">{event.title}</h3>
       <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500"><MapPin size={13} />{event.city} · {event.venue}</p>
       <p className="mt-auto text-xs text-zinc-600">{formatDate(event.starts_at, true, locale)}</p>

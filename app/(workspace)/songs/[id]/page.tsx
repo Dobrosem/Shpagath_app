@@ -6,11 +6,16 @@ import { PageHeader, StatusBadge } from "@/components/ui";
 import { materials, songs, tasks } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/data";
-import { translator } from "@/lib/i18n";
-import { translateLiteral } from "@/lib/i18n";
+import { translateEnum, translator } from "@/lib/i18n";
 import { notFound } from "next/navigation";
 
-const materialTypes = ["demo", "lyrics", "reaper_project", "logic_project", "guitar_tabs", "bass_tabs", "orchestral_score", "orchestral_parts", "vocal_score", "choir_score", "midi", "click_track", "backing_track", "stems", "reference_audio", "reference_video", "notes_pdf"];
+const materialTypes = [
+  "demo", "lyrics", "reaper_project", "logic_project", "sibelius_project",
+  "dorico_project", "musescore_project", "guitar_tabs", "bass_tabs",
+  "orchestral_score", "orchestral_parts", "vocal_score", "choir_score", "midi",
+  "click_track", "backing_track", "stems", "reference_audio", "reference_video",
+  "live_version_audio", "live_version_video", "notes_pdf", "tech_notes",
+];
 export default async function SongPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const profile = await getProfile();
@@ -36,9 +41,9 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     <PageHeader eyebrow={song.subtitle ?? "Песня"} title={song.title}
       action={<EntityDialog title="Материал песни" table="song_materials" path={`/songs/${id}`} hiddenValues={{ song_id: id }} fields={[
         { name: "title", label: "Название", required: true },
-        { name: "type", label: "Тип", type: "select", required: true, options: materialTypes.map((value) => ({ value, label: value.replaceAll("_", " ") })) },
+        { name: "type", label: "Тип", type: "select", required: true, options: materialTypes.map((value) => ({ value, label: value })) },
         { name: "url", label: "Ссылка", type: "url", required: true }, { name: "version", label: "Версия" },
-        { name: "status", label: "Статус", type: "select", required: true, options: ["draft", "active", "approved", "outdated"].map((value) => ({ value, label: value })) },
+        { name: "status", label: "Статус", type: "select", defaultValue: "draft", options: ["draft", "active", "approved", "outdated", "archived"].map((value) => ({ value, label: value })) },
         { name: "notes", label: "Заметки", type: "textarea" },
       ]} />} />
     <div className="mb-7 flex flex-wrap gap-2">{[
@@ -61,7 +66,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
         <div className="table-shell">
           <div className="hidden grid-cols-[1fr_130px_90px_40px] border-b border-white/[.06] px-5 py-3 text-[9px] uppercase tracking-widest text-zinc-700 sm:grid"><span>Материал</span><span>Версия</span><span>Статус</span><span /></div>
           {songMaterials.map((material) => <div key={material.id} className="grid gap-3 border-b border-white/[.055] px-4 py-4 last:border-0 sm:grid-cols-[1fr_130px_90px_40px] sm:items-center sm:px-5">
-            <div className="flex min-w-0 items-center gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[.035] text-zinc-500">{material.type.includes("audio") || material.type.includes("track") ? <FileAudio size={16} /> : material.type.includes("score") || material.type.includes("tabs") ? <FileMusic size={16} /> : <FileText size={16} />}</div><div className="min-w-0"><p className="truncate text-sm text-zinc-200">{material.title}</p><p className="mt-1 text-[10px] text-zinc-700">{translateLiteral(profile.locale, material.type)}</p></div></div>
+            <div className="flex min-w-0 items-center gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[.035] text-zinc-500">{material.type.includes("audio") || material.type.includes("track") ? <FileAudio size={16} /> : material.type.includes("score") || material.type.includes("tabs") ? <FileMusic size={16} /> : <FileText size={16} />}</div><div className="min-w-0"><p className="truncate text-sm text-zinc-200">{material.title}</p><p className="mt-1 text-[10px] text-zinc-700">{translateEnum(profile.locale, material.type)}</p></div></div>
             <span className="text-xs text-zinc-500">{material.version ?? "—"}</span><StatusBadge status={material.status} /><a href={material.url} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-white"><ExternalLink size={15} /></a>
           </div>)}
           {!songMaterials.length && <div className="p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No materials added yet." : "Материалы ещё не добавлены"}</div>}

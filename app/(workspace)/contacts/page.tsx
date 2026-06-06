@@ -1,6 +1,7 @@
 import { EntityDialog } from "@/components/entity-dialog";
 import { SectionPage } from "@/components/section-page";
-import { getContacts } from "@/lib/data";
+import { getContacts, getProfile } from "@/lib/data";
+import { translateEnum } from "@/lib/i18n";
 
 const contactTypes = [
   ["venue", "Площадка"], ["sound_engineer", "Звукорежиссёр"], ["light_engineer", "Художник по свету"],
@@ -10,7 +11,7 @@ const contactTypes = [
 ].map(([value, label]) => ({ value, label }));
 
 export default async function ContactsPage() {
-  const contacts = await getContacts();
+  const [contacts, profile] = await Promise.all([getContacts(), getProfile()]);
   return <SectionPage eyebrow="Сеть" title="Контакты" description="Площадки, подрядчики, музыканты, промоутеры и история работы."
     action={<EntityDialog title="Контакт" table="contacts" path="/contacts" fields={[
       { name: "name", label: "Имя или название", required: true }, { name: "type", label: "Тип", type: "select", required: true, options: contactTypes },
@@ -21,7 +22,7 @@ export default async function ContactsPage() {
     ]} />}
     rows={contacts.map((contact) => ({
       title: contact.name,
-      subtitle: `${contact.type.replaceAll("_", " ")} · ${contact.city || "город не указан"} · ${contact.phone || contact.email || "контакт не указан"}`,
-      meta: contact.reliability_rating ? `Надёжность ${contact.reliability_rating}/5` : "Без оценки",
+      subtitle: `${translateEnum(profile.locale, contact.type)} · ${contact.city || (profile.locale === "en" ? "city not specified" : "город не указан")} · ${contact.phone || contact.email || (profile.locale === "en" ? "contact not specified" : "контакт не указан")}`,
+      meta: contact.reliability_rating ? `${profile.locale === "en" ? "Reliability" : "Надёжность"} ${contact.reliability_rating}/5` : (profile.locale === "en" ? "Not rated" : "Без оценки"),
     }))} />;
 }

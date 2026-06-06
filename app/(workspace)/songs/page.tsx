@@ -8,7 +8,7 @@ import { translator } from "@/lib/i18n";
 const statusOptions = [
   ["idea", "Идея"], ["demo", "Демо"], ["arrangement", "Аранжировка"],
   ["recording", "Запись"], ["mixing", "Сведение"], ["mastering", "Мастеринг"],
-  ["ready", "Готово"], ["live_ready", "Готово к концерту"],
+  ["ready", "Готово"], ["live_ready", "Готово к концерту"], ["archived", "Архив"],
 ].map(([value, label]) => ({ value, label }));
 
 export default async function SongsPage() {

@@ -13,6 +13,7 @@ export default async function EventsPage() {
         { name: "title", label: "Название", required: true }, { name: "city", label: "Город", required: true }, { name: "venue", label: "Площадка" },
         { name: "starts_at", label: "Дата и время", type: "datetime-local", required: true }, { name: "status", label: "Статус", type: "select", defaultValue: "planned", options: [
           { value: "planned", label: "Запланирован" }, { value: "announced", label: "Анонсирован" }, { value: "in_progress", label: "В работе" },
+          { value: "done", label: "Завершён" }, { value: "cancelled", label: "Отменён" }, { value: "archived", label: "Архив" },
         ] },
         { name: "ticket_url", label: "Билеты", type: "url" }, { name: "vk_event_url", label: "Событие VK", type: "url" }, { name: "description", label: "Описание", type: "textarea" },
       ]} />} />

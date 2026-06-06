@@ -5,10 +5,10 @@ import { ArrowUpRight, CalendarDays, Clock3 } from "lucide-react";
 import type { Priority, Status } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
-import type { TranslationKey } from "@/lib/i18n";
+import { translateEnum } from "@/lib/i18n";
 
-export function StatusBadge({ status }: { status: Status | string }) {
-  const { t } = useI18n();
+export function StatusBadge({ status, context }: { status: Status | string; context?: string }) {
+  const { locale } = useI18n();
   const tone = ["done", "approved", "ready", "live_ready", "published", "active"].includes(status)
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
     : ["in_progress", "mixing", "recording", "announced"].includes(status)
@@ -16,16 +16,15 @@ export function StatusBadge({ status }: { status: Status | string }) {
       : ["review", "waiting", "scheduled"].includes(status)
         ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
         : "border-white/10 bg-white/5 text-zinc-300";
-  const key = `status.${status}` as TranslationKey;
-  return <span className={cn("badge", tone)}><i className="h-1.5 w-1.5 rounded-full bg-current" />{t(key)}</span>;
+  return <span className={cn("badge", tone)}><i className="h-1.5 w-1.5 rounded-full bg-current" />{translateEnum(locale, status, status, context)}</span>;
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
-  const { t } = useI18n();
+  const { locale } = useI18n();
   const tone = priority === "critical" ? "text-red-300 bg-red-500/10 border-red-500/25"
     : priority === "high" ? "text-orange-300 bg-orange-500/10 border-orange-500/25"
       : "text-zinc-400 bg-white/[.03] border-white/10";
-  return <span className={cn("badge", tone)}>{t(`priority.${priority}`)}</span>;
+  return <span className={cn("badge", tone)}>{translateEnum(locale, priority)}</span>;
 }
 
 export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {

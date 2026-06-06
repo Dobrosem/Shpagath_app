@@ -12,6 +12,14 @@ export function translator(locale: Locale) {
   return (key: TranslationKey) => translate(locale, key);
 }
 
+export function translateEnum(locale: Locale, value: string, fallback?: string, context?: string) {
+  const contextualKey = context ? `enum.${context}_${value}` as TranslationKey : null;
+  if (contextualKey && contextualKey in ru) return translate(locale, contextualKey);
+  const key = `enum.${value}` as TranslationKey;
+  if (key in ru) return translate(locale, key);
+  return fallback ?? value;
+}
+
 const literalEn: Record<string, string> = {
   "Новая запись": "New record",
   "Песня": "Song",
@@ -122,6 +130,7 @@ const literalEn: Record<string, string> = {
   "Доходы": "Income",
   "Расходы": "Expenses",
   "Остаток": "Balance",
+  "Яндекс Музыка": "Yandex Music",
 };
 
 export function translateLiteral(locale: Locale, value: string) {

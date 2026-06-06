@@ -10,7 +10,7 @@ import {
 } from "@/app/actions";
 import type { ActionState } from "@/lib/types";
 import { useI18n } from "./i18n-provider";
-import { translateLiteral } from "@/lib/i18n";
+import { translateEnum, translateLiteral } from "@/lib/i18n";
 
 interface Field {
   name: string;
@@ -92,7 +92,7 @@ export function EntityDialog({
             {field.type === "textarea"
               ? <textarea name={field.name} required={field.required} defaultValue={field.defaultValue} placeholder={field.placeholder ? text(field.placeholder) : undefined} className="field min-h-24 resize-y py-3" />
               : field.type === "select"
-                ? <select name={field.name} required={field.required} defaultValue={field.defaultValue ?? ""} className="field"><option value="">{t("common.select")}</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{text(option.label)}</option>)}</select>
+                ? <select name={field.name} required={field.required} defaultValue={field.defaultValue ?? ""} className="field"><option value="">{t("common.select")}</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{translateEnum(locale, option.value, text(option.label), table === "events" && field.name === "status" ? "event" : undefined)}</option>)}</select>
                 : <input name={field.name} required={field.required} defaultValue={field.defaultValue} placeholder={field.placeholder ? text(field.placeholder) : undefined} type={field.type ?? "text"} className="field" />}
           </label>)}
           {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 sm:col-span-2"><AlertCircle size={15} className="shrink-0" />{state.error}</div>}
