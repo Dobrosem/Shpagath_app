@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  CalendarDays, CheckSquare2, ChevronDown, CircleDollarSign, ContactRound,
+  CalendarDays, CheckSquare2, CircleDollarSign, ContactRound,
   FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, PackageCheck, Settings,
   SlidersHorizontal, UserRound, UsersRound, X,
 } from "lucide-react";
@@ -62,7 +62,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
   }
 
   return <div className="min-h-screen bg-void text-zinc-300">
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 border-r border-white/[.06] bg-[#090a0a] px-4 py-6 lg:flex lg:flex-col">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 overflow-y-auto border-r border-white/[.06] bg-[#090a0a] px-4 py-6 lg:flex lg:flex-col">
       <div className="px-2"><Mark /></div>
       <div className="my-7 h-px bg-white/[.06]" />
       <NavItems />
@@ -73,8 +73,8 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
     </aside>
 
     {open && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm lg:hidden">
-      <aside className="h-full w-72 border-r border-white/10 bg-[#090a0a] p-5">
-        <div className="mb-8 flex items-center justify-between"><Mark /><button onClick={() => setOpen(false)}><X /></button></div>
+      <aside className="h-full w-72 overflow-y-auto border-r border-white/10 bg-[#090a0a] p-5">
+        <div className="mb-8 flex items-center justify-between"><Mark /><button type="button" aria-label={t("common.close")} onClick={() => setOpen(false)}><X /></button></div>
         <NavItems onNavigate={() => setOpen(false)} />
       </aside>
     </div>}
@@ -86,14 +86,13 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block"><p className="text-xs text-zinc-300">{profile.full_name}</p><p className="text-[9px] uppercase tracking-wider text-zinc-600">{translateLiteral(locale, profile.role)}</p></div>
           <div className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-zinc-800 text-[10px] font-semibold">{initials(profile.full_name)}</div>
-          <ChevronDown size={13} className="text-zinc-600" />
         </div>
       </header>
       <main className="mx-auto max-w-[1500px] px-4 py-7 pb-24 sm:px-7 lg:pb-10">{children}</main>
     </div>
 
     <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t border-white/10 bg-[#090a0a]/95 px-2 backdrop-blur-xl lg:hidden">
-      {navigation.slice(0, 5).map(({ href, key, icon: Icon }) => <Link key={href} href={href} className={cn("flex flex-col items-center gap-1 px-3 text-[9px] text-zinc-600", pathname.startsWith(href) && "text-zinc-100")}><Icon size={18} /><span>{t(key)}</span></Link>)}
+      {navigation.slice(0, 5).map(({ href, key, icon: Icon }) => <Link key={href} href={href} className={cn("flex min-w-0 flex-1 flex-col items-center gap-1 px-1 text-center text-[9px] leading-tight text-zinc-600", pathname.startsWith(href) && "text-zinc-100")}><Icon size={18} /><span>{t(key)}</span></Link>)}
     </nav>
   </div>;
 }

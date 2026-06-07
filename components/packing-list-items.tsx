@@ -34,12 +34,15 @@ export function PackingListItems({
     <div className="metal-card divide-y divide-white/[.055]">
       {items.map((item) => <div key={item.id} className="flex items-start gap-3 p-4">
         <button
+          type="button"
+          aria-label={t("packing.toggleItem")}
+          title={t("packing.toggleItem")}
           disabled={pending}
           onClick={() => startTransition(async () => {
             await setPackingListItemPacked(listId, item.id, !item.packed);
           })}
           className={cn(
-            "grid h-6 w-6 shrink-0 place-items-center rounded border",
+            "grid h-9 w-9 shrink-0 place-items-center rounded-lg border",
             item.packed
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : "border-white/10 text-transparent",
@@ -56,12 +59,15 @@ export function PackingListItems({
           {item.notes && <p className="mt-2 text-xs text-zinc-500">{item.notes}</p>}
         </div>
         <button
+          type="button"
+          aria-label={t("packing.deleteItem")}
           title={t("packing.deleteItem")}
           disabled={pending}
           onClick={() => startTransition(async () => {
+            if (!window.confirm(t("packing.deleteConfirm"))) return;
             await deletePackingListItem(listId, item.id);
           })}
-          className="text-zinc-700 hover:text-red-300"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-zinc-700 transition hover:bg-red-500/10 hover:text-red-300"
         >
           <Trash2 size={15} />
         </button>

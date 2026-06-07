@@ -1,4 +1,3 @@
-import { Filter, Search } from "lucide-react";
 import { TaskCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
 import { PageHeader } from "@/components/ui";
@@ -29,10 +28,6 @@ export default async function TasksPage() {
           { value: "high", label: "Высокий" }, { value: "critical", label: "Критический" },
         ] }, { name: "due_date", label: "Срок", type: "date" },
       ]} />} />
-    <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-      <div className="relative max-w-md flex-1"><Search className="absolute left-3 top-3 text-zinc-700" size={15} /><input className="field pl-9" placeholder={profile.locale === "en" ? "Search tasks" : "Поиск задач"} /></div>
-      <button className="button-secondary"><Filter size={14} />{profile.locale === "en" ? "Filters" : "Фильтры"}</button>
-    </div>
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {tasks.map((task) => <TaskCard key={task.id} task={task} />)}
       {!tasks.length && <div className="metal-card col-span-full p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No tasks yet. Create the first task." : "Задач пока нет. Создайте первую задачу."}</div>}

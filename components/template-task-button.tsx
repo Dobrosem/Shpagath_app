@@ -12,6 +12,7 @@ export function TemplateTaskButton({ eventId }: { eventId: string }) {
 
   return <div className="flex flex-col items-end gap-1">
     <button
+      type="button"
       className="button-secondary"
       disabled={pending}
       onClick={() => startTransition(async () => {
@@ -29,4 +30,3 @@ export function TemplateTaskButton({ eventId }: { eventId: string }) {
     {message && <span className="max-w-72 text-right text-[10px] text-zinc-500">{message}</span>}
   </div>;
 }
-

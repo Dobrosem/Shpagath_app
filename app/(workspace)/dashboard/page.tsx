@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Crosshair, DatabaseBackup, Plus } from "lucide-react";
+import { Crosshair, DatabaseBackup, FolderKanban } from "lucide-react";
 import { EventCard, TaskCard } from "@/components/cards";
 import { RedZone } from "@/components/red-zone";
 import { Metric, PageHeader, SectionHeader } from "@/components/ui";
@@ -58,7 +58,7 @@ export default async function DashboardPage() {
       description={t("page.dashboard.description")}
       action={<div className="flex gap-2">
         <Link href="/my" className="button-secondary"><Crosshair size={15} />{t("nav.my")}</Link>
-        <Link href="/projects" className="button-primary"><Plus size={15} />{t("common.create")}</Link>
+        <Link href="/projects" className="button-primary"><FolderKanban size={15} />{t("nav.projects")}</Link>
       </div>}
     />
 

@@ -1,4 +1,3 @@
-import { Filter } from "lucide-react";
 import { ProjectCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
 import { PageHeader } from "@/components/ui";
@@ -27,7 +26,6 @@ export default async function ProjectsPage() {
           { value: "high", label: "Высокий" }, { value: "critical", label: "Критический" },
         ] }, { name: "deadline", label: "Дедлайн", type: "date" },
       ]} />} />
-    <div className="mb-5 flex flex-wrap gap-2"><button className="button-secondary"><Filter size={14} />{profile.locale === "en" ? "All types" : "Все типы"}</button>{(profile.locale === "en" ? ["In progress", "Waiting", "Critical"] : ["В работе", "Ожидают", "Критические"]).map((item) => <button key={item} className="button-secondary">{item}</button>)}</div>
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{projects.map((project) => <ProjectCard key={project.id} project={project} />)}{!projects.length && <div className="metal-card col-span-full p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No projects yet." : "Проектов пока нет."}</div>}</div>
   </>;
 }

@@ -58,14 +58,14 @@ export function EventEditDialog({
   ] as const;
 
   return <>
-    <button className="button-secondary" onClick={() => setOpen(true)}>
+    <button type="button" className="button-secondary" onClick={() => setOpen(true)}>
       <Pencil size={15} />{t("event.edit")}
     </button>
     {open && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
       <div className="metal-card max-h-[92vh] w-full max-w-3xl overflow-y-auto p-6" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
           <div><p className="eyebrow">{t("common.edit")}</p><h2 className="font-display text-2xl uppercase text-white">{t("event.edit")}</h2></div>
-          <button disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
+          <button type="button" aria-label={t("common.close")} disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
         </div>
         <form action={action} className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="locale" value={locale} />

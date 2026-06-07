@@ -33,9 +33,10 @@ export function MaterialBackupEditor({
   return <>
     <button
       type="button"
+      aria-label={t("backup.title")}
       title={t("backup.title")}
       onClick={() => setOpen(true)}
-      className={backup?.status === "ok" ? "text-emerald-400" : "text-amber-400"}
+      className={`grid h-9 w-9 place-items-center rounded-lg transition hover:bg-white/[.05] ${backup?.status === "ok" ? "text-emerald-400" : "text-amber-400"}`}
     >
       <DatabaseBackup size={16} />
     </button>
@@ -43,7 +44,7 @@ export function MaterialBackupEditor({
       <div className="metal-card w-full max-w-xl p-6" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-xl uppercase text-white">{t("backup.title")}</h2>
-          <button type="button" onClick={() => setOpen(false)}><X size={18} /></button>
+          <button type="button" aria-label={t("common.close")} onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <form action={action} className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">{t("backup.status")}</span>
@@ -88,4 +89,3 @@ export function MaterialBackupEditor({
     </div>}
   </>;
 }
-

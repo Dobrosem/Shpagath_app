@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, FileAudio, FileMusic, FileText, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileAudio, FileMusic, FileText } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
@@ -69,7 +69,6 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     <div className="metal-card p-6">
       <div className="flex items-center justify-between">
         <StatusBadge status={song.status} />
-        <MoreHorizontal className="text-zinc-600" />
       </div>
       <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5">
         {[

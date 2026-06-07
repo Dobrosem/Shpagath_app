@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(value?: string | null, includeTime = false, locale = "ru") {
-  if (!value) return "Не назначено";
+  if (!value) return locale === "en" ? "Not scheduled" : "Не назначено";
   return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "ru-RU", {
     day: "2-digit",
     month: "short",

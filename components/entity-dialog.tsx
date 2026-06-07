@@ -80,14 +80,14 @@ export function EntityDialog({
   }, [detailPath, router, state]);
 
   return <>
-    <button className="button-primary" onClick={() => setOpen(true)}>
+    <button type="button" className="button-primary" onClick={() => setOpen(true)}>
       <Plus size={15} />{t("common.create")}
     </button>
     {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
       <div className="metal-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
           <div><p className="eyebrow">{t("common.newRecord")}</p><h2 className="font-display text-2xl uppercase text-white">{text(title)}</h2></div>
-          <button disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
+          <button type="button" aria-label={t("common.close")} disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
         </div>
         <form action={formAction} className="grid gap-4 sm:grid-cols-2">
           {Object.entries(hiddenValues ?? {}).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
