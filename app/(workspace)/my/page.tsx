@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { CalendarDays, DatabaseBackup, MapPin, Music2, UsersRound } from "lucide-react";
-import { EventCard, SongCard, TaskCard } from "@/components/cards";
+import { EventCard, SongCard } from "@/components/cards";
 import { RedZone } from "@/components/red-zone";
+import { TaskSections } from "@/components/task-sections";
 import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@/components/ui";
 import { getMyWorkspace, getProfile, getRedZoneIssues } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
@@ -24,10 +25,7 @@ export default async function MyWorkspacePage() {
       <div className="space-y-8">
         <section>
           <SectionHeader title={t("my.tasks")} href="/tasks" />
-          <div className="grid gap-3 md:grid-cols-2">
-            {workspace.tasks.slice(0, 6).map((task) => <TaskCard key={task.id} task={task} />)}
-            {!workspace.tasks.length && <EmptyState title={t("common.noData")} description={t("my.emptyTasks")} />}
-          </div>
+          <TaskSections tasks={workspace.tasks} activeLimit={6} completedLimit={6} />
         </section>
 
         <section>
@@ -90,4 +88,3 @@ export default async function MyWorkspacePage() {
     </div>
   </>;
 }
-

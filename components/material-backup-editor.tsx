@@ -2,7 +2,7 @@
 
 import { DatabaseBackup, Loader2, X } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
-import { upsertMaterialBackup } from "@/app/actions";
+import { updateMaterialBackup } from "@/app/actions";
 import type { ActionState, MaterialBackup, Profile } from "@/lib/types";
 import { translateEnum } from "@/lib/i18n";
 import { useI18n } from "./i18n-provider";
@@ -14,16 +14,18 @@ export function MaterialBackupEditor({
   songId,
   backup,
   profiles,
+  mode = "icon",
 }: {
   materialId: string;
   songId: string;
   backup?: MaterialBackup | null;
   profiles: Profile[];
+  mode?: "icon" | "button";
 }) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(
-    upsertMaterialBackup.bind(null, materialId, songId),
+    updateMaterialBackup.bind(null, materialId, songId),
     initialState,
   );
   useEffect(() => {
@@ -36,9 +38,11 @@ export function MaterialBackupEditor({
       aria-label={t("backup.title")}
       title={t("backup.title")}
       onClick={() => setOpen(true)}
-      className={`grid h-9 w-9 place-items-center rounded-lg transition hover:bg-white/[.05] ${backup?.status === "ok" ? "text-emerald-400" : "text-amber-400"}`}
+      className={mode === "button"
+        ? "button-secondary"
+        : `grid h-9 w-9 place-items-center rounded-lg transition hover:bg-white/[.05] ${backup?.status === "ok" ? "text-emerald-400" : "text-amber-400"}`}
     >
-      <DatabaseBackup size={16} />
+      <DatabaseBackup size={16} />{mode === "button" && t("common.edit")}
     </button>
     {open && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
       <div className="metal-card w-full max-w-xl p-6" onMouseDown={(event) => event.stopPropagation()}>
@@ -47,6 +51,7 @@ export function MaterialBackupEditor({
           <button type="button" aria-label={t("common.close")} onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <form action={action} className="grid gap-4 sm:grid-cols-2">
+          <input type="hidden" name="locale" value={locale} />
           <label><span className="label">{t("backup.status")}</span>
             <select className="field" name="status" defaultValue={backup?.status ?? "missing_backup"}>
               {["missing_backup", "unchecked", "ok", "problem"].map((status) => (
@@ -73,6 +78,13 @@ export function MaterialBackupEditor({
           <label className="flex items-center gap-2 text-sm text-zinc-400">
             <input type="checkbox" name="has_cloud_copy" defaultChecked={backup?.has_cloud_copy} />
             {t("backup.cloudCopy")}
+          </label>
+          <label className="flex items-center gap-2 text-sm text-zinc-400">
+            <input type="checkbox" name="usb_copy_confirmed" defaultChecked={backup?.usb_copy_confirmed} />
+            {t("backup.usbCopy")}
+          </label>
+          <label><span className="label">{t("backup.lastChecked")}</span>
+            <input className="field" type="datetime-local" name="last_checked_at" defaultValue={backup?.last_checked_at?.slice(0, 16) ?? ""} />
           </label>
           <label className="sm:col-span-2"><span className="label">{t("backup.notes")}</span>
             <textarea className="field min-h-20 py-3" name="notes" defaultValue={backup?.notes ?? ""} />

@@ -1,6 +1,7 @@
 import { createClient } from "./supabase/server";
 import { demoProfile, events, people, projects, songs, tasks } from "./demo-data";
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
+import { getStorageDisplayUrl } from "./storage";
 import type {
   Contact,
   Event,
@@ -103,15 +104,16 @@ export async function getSongs(): Promise<Song[]> {
     .select("*, song_materials(type, material_backups(status))")
     .order("created_at", { ascending: false });
   reportReadError("songs", error);
-  return (data ?? []).map((song) => ({
+  return Promise.all((data ?? []).map(async (song) => ({
     ...song,
+    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
     materials_count: song.song_materials?.length ?? 0,
     missing_backups_count: (song.song_materials ?? []).filter(
       (material: { type: string; material_backups?: { status: string }[] }) =>
         criticalMaterialTypes.has(material.type)
         && material.material_backups?.[0]?.status !== "ok",
     ).length,
-  })) as Song[];
+  }))) as Promise<Song[]>;
 }
 
 export async function getEvents(): Promise<Event[]> {
@@ -119,7 +121,10 @@ export async function getEvents(): Promise<Event[]> {
   if (!supabase) return events;
   const { data, error } = await supabase.from("events").select("*").order("starts_at");
   reportReadError("events", error);
-  return (data as Event[]) ?? [];
+  return Promise.all(((data as Event[]) ?? []).map(async (event) => ({
+    ...event,
+    poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),
+  })));
 }
 
 export async function getEventSetlist(eventId: string): Promise<EventSetlist | null> {
@@ -336,11 +341,20 @@ export async function getMyWorkspace() {
       || rehearsal.participants?.includes(user.id),
   );
 
+  const mySongs = await Promise.all(((songResult.data as Song[]) ?? []).map(async (song) => ({
+    ...song,
+    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+  })));
+  const myEvents = await Promise.all(((eventResult.data as Event[]) ?? []).map(async (event) => ({
+    ...event,
+    poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),
+  })));
+
   return {
     tasks: myTasks,
-    songs: (songResult.data as Song[]) ?? [],
+    songs: mySongs,
     materials: [...materialsById.values()],
-    events: (eventResult.data as Event[]) ?? [],
+    events: myEvents,
     rehearsals: myRehearsals,
   };
 }

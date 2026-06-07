@@ -101,6 +101,49 @@ async function ensureAuthenticatedProfile() {
   return { error: null, supabase, user };
 }
 
+type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+
+async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: string) {
+  revalidatePath("/songs");
+  revalidatePath(`/songs/${songId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+
+  const { data, error } = await supabase
+    .from("setlist_items")
+    .select("setlist:setlists(event_id)")
+    .eq("song_id", songId);
+  if (error) {
+    console.error("Supabase read related song events error:", error);
+    return;
+  }
+  const eventIds = new Set(
+    (data ?? []).flatMap((item) => {
+      const setlist = item.setlist as { event_id?: string } | { event_id?: string }[] | null;
+      if (Array.isArray(setlist)) return setlist.map((value) => value.event_id).filter(Boolean) as string[];
+      return setlist?.event_id ? [setlist.event_id] : [];
+    }),
+  );
+  for (const eventId of eventIds) {
+    revalidatePath(`/events/${eventId}`);
+    revalidatePath(`/events/${eventId}/battle-sheet`);
+    revalidatePath(`/events/${eventId}/setlist`);
+  }
+}
+
+function localized(locale: Locale, ru: string, en: string) {
+  return locale === "en" ? en : ru;
+}
+
+function localizedReadableError(locale: Locale, message: string) {
+  if (locale === "ru") return readableError(message);
+  if (message.includes("row-level security")) return "You do not have permission to save these changes.";
+  if (message.includes("foreign key")) return "A related record prevents this change.";
+  if (message.includes("not-null") || message.includes("null value")) return "A required field is missing.";
+  if (message.includes("duplicate key")) return "This record already exists.";
+  return message;
+}
+
 async function insertEntity(
   table: AllowedTable,
   path: string,
@@ -116,6 +159,16 @@ async function insertEntity(
   }
 
   const payload = cleanForm(formData);
+  if (table === "songs" && (formData.has("duration_minutes") || formData.has("duration_seconds"))) {
+    const minutes = Number(formData.get("duration_minutes") || 0);
+    const seconds = Number(formData.get("duration_seconds") || 0);
+    if (!Number.isInteger(minutes) || minutes < 0 || !Number.isInteger(seconds) || seconds < 0 || seconds > 59) {
+      return { success: false, error: "Укажите корректную длительность: секунды должны быть от 0 до 59." };
+    }
+    payload.duration = minutes * 60 + seconds;
+    delete payload.duration_minutes;
+    delete payload.duration_seconds;
+  }
   if (!payload.title && table !== "contacts") {
     return { success: false, error: "Заполните название." };
   }
@@ -143,6 +196,9 @@ async function insertEntity(
   revalidatePath(path);
   revalidatePath("/dashboard");
   if (payload.project_id) revalidatePath(`/projects/${payload.project_id}`);
+  if (table === "song_materials" && payload.song_id) {
+    await revalidateSongPaths(session.supabase, String(payload.song_id));
+  }
   return { success: true, error: null, id: data.id };
 }
 
@@ -191,6 +247,392 @@ export async function updateEntity(
   return { success: true, error: null, id };
 }
 
+export async function updateSong(
+  songId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const textFields = [
+    "title",
+    "subtitle",
+    "key",
+    "tuning",
+    "time_signature",
+    "lyrics",
+    "description",
+    "live_version_notes",
+    "arrangement_version",
+  ] as const;
+  const payload: Record<string, string | number | null> = {};
+
+  for (const field of textFields) {
+    if (!formData.has(field)) continue;
+    const value = String(formData.get(field) ?? "").trim();
+    payload[field] = value || null;
+  }
+  if (formData.has("title") && !payload.title) {
+    return {
+      success: false,
+      error: localized(locale, "Введите название песни.", "Enter the song title."),
+    };
+  }
+
+  if (formData.has("status")) {
+    const status = String(formData.get("status") ?? "");
+    const allowed = new Set([
+      "idea", "demo", "arrangement", "recording", "mixing",
+      "mastering", "ready", "live_ready", "archived",
+    ]);
+    if (!allowed.has(status)) {
+      return {
+        success: false,
+        error: localized(locale, "Выберите корректный статус песни.", "Select a valid song status."),
+      };
+    }
+    payload.status = status;
+  }
+
+  for (const field of ["bpm"] as const) {
+    if (!formData.has(field)) continue;
+    const rawValue = String(formData.get(field) ?? "").trim();
+    if (!rawValue) {
+      payload[field] = null;
+      continue;
+    }
+    const value = Number(rawValue);
+    if (!Number.isInteger(value) || value < 0 || (field === "bpm" && (value < 20 || value > 400))) {
+      return {
+        success: false,
+        error: field === "bpm"
+          ? localized(locale, "BPM должен быть от 20 до 400.", "BPM must be between 20 and 400.")
+          : localized(locale, "Длительность должна быть целым числом секунд.", "Duration must be a whole number of seconds."),
+      };
+    }
+    payload[field] = value;
+  }
+  if (formData.has("duration_minutes") || formData.has("duration_seconds")) {
+    const minutes = Number(formData.get("duration_minutes") || 0);
+    const seconds = Number(formData.get("duration_seconds") || 0);
+    if (!Number.isInteger(minutes) || minutes < 0 || !Number.isInteger(seconds) || seconds < 0 || seconds > 59) {
+      return {
+        success: false,
+        error: localized(
+          locale,
+          "Укажите корректную длительность: секунды должны быть от 0 до 59.",
+          "Enter a valid duration: seconds must be between 0 and 59.",
+        ),
+      };
+    }
+    payload.duration = minutes * 60 + seconds;
+  }
+
+  if (!Object.keys(payload).length) {
+    return {
+      success: false,
+      error: localized(locale, "Нет данных для сохранения.", "There is nothing to save."),
+    };
+  }
+  const { data, error } = await session.supabase
+    .from("songs")
+    .update(payload)
+    .eq("id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase update song error:", error, payload);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Песня не найдена или нет прав на редактирование.", "Song not found or access denied."),
+    };
+  }
+  await revalidateSongPaths(session.supabase, songId);
+  return { success: true, error: null, id: songId };
+}
+
+export async function updateSongMaterial(
+  materialId: string,
+  songId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const title = String(formData.get("title") ?? "").trim();
+  const type = String(formData.get("type") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!title || !type || !url) {
+    return {
+      success: false,
+      error: localized(locale, "Заполните название, тип и ссылку материала.", "Enter the material title, type and URL."),
+    };
+  }
+  try {
+    new URL(url);
+  } catch {
+    return {
+      success: false,
+      error: localized(locale, "Введите корректную ссылку материала.", "Enter a valid material URL."),
+    };
+  }
+  const allowedStatuses = new Set(["draft", "active", "approved", "outdated", "archived"]);
+  const allowedTypes = new Set([
+    "demo", "lyrics", "reaper_project", "logic_project", "sibelius_project",
+    "dorico_project", "musescore_project", "guitar_tabs", "bass_tabs",
+    "orchestral_score", "orchestral_parts", "vocal_score", "choir_score", "midi",
+    "click_track", "backing_track", "stems", "reference_audio", "reference_video",
+    "live_version_audio", "live_version_video", "notes_pdf", "tech_notes",
+  ]);
+  if (!allowedTypes.has(type)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный тип материала.", "Select a valid material type."),
+    };
+  }
+  if (!allowedStatuses.has(status)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный статус материала.", "Select a valid material status."),
+    };
+  }
+  const payload = {
+    title,
+    type,
+    url,
+    status,
+    version: String(formData.get("version") ?? "").trim() || null,
+    notes: String(formData.get("notes") ?? "").trim() || null,
+  };
+  const { data, error } = await session.supabase
+    .from("song_materials")
+    .update(payload)
+    .eq("id", materialId)
+    .eq("song_id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase update song material error:", error, payload);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Материал не найден или нет прав на редактирование.", "Material not found or access denied."),
+    };
+  }
+  await revalidateSongPaths(session.supabase, songId);
+  return { success: true, error: null, id: materialId };
+}
+
+export async function deleteSongMaterial(
+  materialId: string,
+  songId: string,
+  locale: Locale,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const { data, error } = await session.supabase
+    .from("song_materials")
+    .delete()
+    .eq("id", materialId)
+    .eq("song_id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase delete song material error:", error);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Материал не найден или нет прав на удаление.", "Material not found or access denied."),
+    };
+  }
+  await revalidateSongPaths(session.supabase, songId);
+  return { success: true, error: null, id: materialId };
+}
+
+export async function updateSongCover(
+  songId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const coverStatus = String(formData.get("cover_status") ?? "draft");
+  if (!["draft", "review", "approved", "outdated", "archived"].includes(coverStatus)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный статус обложки.", "Select a valid cover status."),
+    };
+  }
+
+  let coverImageUrl: string | null | undefined;
+  let uploadedStoragePath: string | null = null;
+  if (formData.get("remove_cover") === "true") {
+    coverImageUrl = null;
+  } else {
+    const file = formData.get("cover_file");
+    if (file instanceof File && file.size > 0) {
+      if (!file.type.startsWith("image/")) {
+        return {
+          success: false,
+          error: localized(locale, "Выберите файл изображения.", "Select an image file."),
+        };
+      }
+      if (file.size > 7 * 1024 * 1024) {
+        return {
+          success: false,
+          error: localized(locale, "Изображение должно быть меньше 7 МБ.", "The image must be smaller than 7 MB."),
+        };
+      }
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+      const storagePath = `${songId}/${Date.now()}-${safeName || "cover"}`;
+      const uploadResult = await session.supabase.storage
+        .from("song-covers")
+        .upload(storagePath, file, { contentType: file.type, upsert: false });
+      if (uploadResult.error) {
+        console.error("Supabase upload song cover error:", uploadResult.error);
+        return {
+          success: false,
+          error: localized(
+            locale,
+            "Не удалось загрузить обложку. Проверьте bucket song-covers и Storage policies.",
+            "Could not upload the cover. Check the song-covers bucket and Storage policies.",
+          ),
+        };
+      }
+      uploadedStoragePath = storagePath;
+      coverImageUrl = session.supabase.storage.from("song-covers").getPublicUrl(storagePath).data.publicUrl;
+    } else if (formData.has("cover_image_url")) {
+      const manualUrl = String(formData.get("cover_image_url") ?? "").trim();
+      if (manualUrl) {
+        try {
+          new URL(manualUrl);
+        } catch {
+          return {
+            success: false,
+            error: localized(locale, "Введите корректную ссылку на обложку.", "Enter a valid cover URL."),
+          };
+        }
+      }
+      coverImageUrl = manualUrl || null;
+    }
+  }
+
+  const payload: Record<string, string | null> = {
+    cover_status: coverStatus,
+    cover_notes: String(formData.get("cover_notes") ?? "").trim() || null,
+  };
+  if (coverImageUrl !== undefined) payload.cover_image_url = coverImageUrl;
+  const { data, error } = await session.supabase
+    .from("songs")
+    .update(payload)
+    .eq("id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase update song cover error:", error, payload);
+    if (uploadedStoragePath) {
+      await session.supabase.storage.from("song-covers").remove([uploadedStoragePath]);
+    }
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    if (uploadedStoragePath) {
+      await session.supabase.storage.from("song-covers").remove([uploadedStoragePath]);
+    }
+    return {
+      success: false,
+      error: localized(locale, "Песня не найдена или нет прав на редактирование.", "Song not found or access denied."),
+    };
+  }
+  await revalidateSongPaths(session.supabase, songId);
+  return {
+    success: true,
+    error: null,
+    id: songId,
+    count: uploadedStoragePath ? 1 : 0,
+  };
+}
+
+export async function deleteSong(songId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const { data: relatedItems, error: relatedError } = await session.supabase
+    .from("setlist_items")
+    .select("setlist:setlists(event_id)")
+    .eq("song_id", songId);
+  if (relatedError) console.error("Supabase read delete song events error:", relatedError);
+  const { data: songRecord, error: songReadError } = await session.supabase
+    .from("songs")
+    .select("cover_image_url")
+    .eq("id", songId)
+    .maybeSingle();
+  if (songReadError) console.error("Supabase read delete song cover error:", songReadError);
+  const eventIds = new Set(
+    (relatedItems ?? []).flatMap((item) => {
+      const setlist = item.setlist as { event_id?: string } | { event_id?: string }[] | null;
+      if (Array.isArray(setlist)) return setlist.map((value) => value.event_id).filter(Boolean) as string[];
+      return setlist?.event_id ? [setlist.event_id] : [];
+    }),
+  );
+
+  const { data: deletedSong, error } = await session.supabase
+    .from("songs")
+    .delete()
+    .eq("id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase delete song error:", error);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!deletedSong) {
+    return {
+      success: false,
+      error: localized(locale, "Песня не найдена или нет прав на удаление.", "Song not found or access denied."),
+    };
+  }
+  revalidatePath("/songs");
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+  revalidatePath("/events");
+  for (const eventId of eventIds) {
+    revalidatePath(`/events/${eventId}`);
+    revalidatePath(`/events/${eventId}/battle-sheet`);
+    revalidatePath(`/events/${eventId}/setlist`);
+  }
+  const publicCoverPrefix = "/storage/v1/object/public/song-covers/";
+  const coverUrl = songRecord?.cover_image_url;
+  if (coverUrl?.includes(publicCoverPrefix)) {
+    const storagePath = decodeURIComponent(coverUrl.split(publicCoverPrefix)[1]?.split("?")[0] ?? "");
+    if (storagePath) {
+      const removeResult = await session.supabase.storage.from("song-covers").remove([storagePath]);
+      if (removeResult.error) console.error("Supabase delete song cover object error:", removeResult.error);
+    }
+  }
+  return { success: true, error: null, id: songId };
+}
+
 export async function updateEvent(
   eventId: string,
   _previousState: ActionState,
@@ -206,6 +648,7 @@ export async function updateEvent(
   const date = String(formData.get("date") ?? "").trim();
   const time = String(formData.get("time") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
+  const posterStatus = String(formData.get("poster_status") ?? "draft").trim();
   const locale = formData.get("locale") === "en" ? "en" : "ru";
   const allowedStatuses = new Set([
     "planned",
@@ -230,6 +673,12 @@ export async function updateEvent(
       error: locale === "en"
         ? "Select a valid event status."
         : "Выберите корректный статус концерта.",
+    };
+  }
+  if (!["draft", "review", "approved", "outdated", "archived"].includes(posterStatus)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный статус афиши.", "Select a valid poster status."),
     };
   }
 
@@ -282,6 +731,7 @@ export async function updateEvent(
     "tech_rider_url",
     "light_timing_url",
     "video_timing_url",
+    "poster_image_url",
   ] as const;
   for (const field of urlFields) {
     const value = String(formData.get(field) ?? "").trim();
@@ -302,19 +752,81 @@ export async function updateEvent(
     city,
     starts_at: startsAt.toISOString(),
     status,
+    poster_status: posterStatus,
+    poster_notes: String(formData.get("poster_notes") ?? "").trim() || null,
   };
   for (const field of optionalTextFields) {
     const value = String(formData.get(field) ?? "").trim();
     payload[field] = value || null;
   }
 
-  const { error } = await session.supabase
+  let uploadedPosterPath: string | null = null;
+  if (formData.get("remove_poster") === "true") {
+    payload.poster_image_url = null;
+  } else {
+    const posterFile = formData.get("poster_file");
+    if (posterFile instanceof File && posterFile.size > 0) {
+      if (!posterFile.type.startsWith("image/")) {
+        return {
+          success: false,
+          error: localized(locale, "Выберите изображение для афиши.", "Select an image for the poster."),
+        };
+      }
+      if (posterFile.size > 7 * 1024 * 1024) {
+        return {
+          success: false,
+          error: localized(locale, "Афиша должна быть меньше 7 МБ.", "The poster must be smaller than 7 MB."),
+        };
+      }
+      const safeName = posterFile.name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+      uploadedPosterPath = `${eventId}/${Date.now()}-${safeName || "poster"}`;
+      const uploadResult = await session.supabase.storage
+        .from("event-posters")
+        .upload(uploadedPosterPath, posterFile, {
+          contentType: posterFile.type,
+          upsert: false,
+        });
+      if (uploadResult.error) {
+        console.error("Supabase upload event poster error:", uploadResult.error);
+        return {
+          success: false,
+          error: localized(
+            locale,
+            "Не удалось загрузить афишу. Проверьте bucket event-posters и Storage policies.",
+            "Could not upload the poster. Check the event-posters bucket and Storage policies.",
+          ),
+        };
+      }
+      payload.poster_image_url = session.supabase.storage
+        .from("event-posters")
+        .getPublicUrl(uploadedPosterPath).data.publicUrl;
+    } else {
+      const manualPosterUrl = String(formData.get("poster_image_url") ?? "").trim();
+      payload.poster_image_url = manualPosterUrl || null;
+    }
+  }
+
+  const { data: updatedEvent, error } = await session.supabase
     .from("events")
     .update(payload)
-    .eq("id", eventId);
+    .eq("id", eventId)
+    .select("id")
+    .maybeSingle();
   if (error) {
     console.error("Supabase update event error:", error, payload);
-    return { success: false, error: readableError(error.message) };
+    if (uploadedPosterPath) {
+      await session.supabase.storage.from("event-posters").remove([uploadedPosterPath]);
+    }
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!updatedEvent) {
+    if (uploadedPosterPath) {
+      await session.supabase.storage.from("event-posters").remove([uploadedPosterPath]);
+    }
+    return {
+      success: false,
+      error: localized(locale, "Концерт не найден или нет прав на редактирование.", "Event not found or access denied."),
+    };
   }
 
   const setlistNotes = String(formData.get("setlist_notes") ?? "").trim();
@@ -726,7 +1238,7 @@ export async function deletePackingListItem(
   return { success: true, error: null };
 }
 
-export async function upsertMaterialBackup(
+export async function updateMaterialBackup(
   materialId: string,
   songId: string,
   _previousState: ActionState,
@@ -736,29 +1248,186 @@ export async function upsertMaterialBackup(
   if (session.error || !session.supabase || !session.user) {
     return { success: false, error: session.error };
   }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
   const payload = cleanForm(formData);
+  const status = String(payload.status || "unchecked");
+  if (!["missing_backup", "unchecked", "ok", "problem"].includes(status)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный статус резервной копии.", "Select a valid backup status."),
+    };
+  }
+  const backupUrl = String(payload.backup_url ?? "");
+  if (backupUrl) {
+    try {
+      new URL(backupUrl);
+    } catch {
+      return {
+        success: false,
+        error: localized(locale, "Введите корректную ссылку на копию.", "Enter a valid backup URL."),
+      };
+    }
+  }
+  let lastCheckedAt: string | null = null;
+  if (payload.last_checked_at) {
+    const parsed = new Date(String(payload.last_checked_at));
+    if (Number.isNaN(parsed.getTime())) {
+      return {
+        success: false,
+        error: localized(locale, "Укажите корректную дату последней проверки.", "Enter a valid last checked date."),
+      };
+    }
+    lastCheckedAt = parsed.toISOString();
+  }
   const record = {
     material_id: materialId,
-    backup_url: payload.backup_url || null,
+    backup_url: backupUrl || null,
     backup_location: payload.backup_location || null,
     has_local_copy: formData.get("has_local_copy") === "on",
     has_cloud_copy: formData.get("has_cloud_copy") === "on",
+    usb_copy_confirmed: formData.get("usb_copy_confirmed") === "on",
     responsible_id: payload.responsible_id || session.user.id,
-    status: payload.status || "unchecked",
+    status,
     notes: payload.notes || null,
     verified_at: payload.status === "ok" ? new Date().toISOString() : null,
+    last_checked_at: lastCheckedAt,
   };
   const { data, error } = await session.supabase
     .from("material_backups")
     .upsert(record, { onConflict: "material_id" })
     .select("id")
     .single();
-  if (error) return { success: false, error: readableError(error.message) };
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
   revalidatePath(`/songs/${songId}`);
   revalidatePath("/songs");
   revalidatePath("/dashboard");
   revalidatePath("/my");
   return { success: true, error: null, id: data.id };
+}
+
+type TaskRelations = {
+  project_id?: string | null;
+  song_id?: string | null;
+  event_id?: string | null;
+};
+
+function revalidateTaskPaths(task: TaskRelations) {
+  revalidatePath("/tasks");
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+  if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
+  if (task.song_id) revalidatePath(`/songs/${task.song_id}`);
+  if (task.event_id) revalidatePath(`/events/${task.event_id}`);
+}
+
+export async function updateTask(
+  taskId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const title = String(formData.get("title") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "").trim();
+  const dueDate = String(formData.get("due_date") ?? "").trim();
+  if (!title) {
+    return { success: false, error: localized(locale, "Введите название задачи.", "Enter the task title.") };
+  }
+  if (!["todo", "in_progress", "review", "done", "cancelled"].includes(status)) {
+    return { success: false, error: localized(locale, "Выберите корректный статус.", "Select a valid status.") };
+  }
+  if (!["low", "normal", "high", "critical"].includes(priority)) {
+    return { success: false, error: localized(locale, "Выберите корректный приоритет.", "Select a valid priority.") };
+  }
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return { success: false, error: localized(locale, "Укажите корректный срок.", "Enter a valid due date.") };
+  }
+
+  const payload = {
+    title,
+    description: String(formData.get("description") ?? "").trim() || null,
+    status,
+    priority,
+    due_date: dueDate || null,
+    assignee_id: String(formData.get("assignee_id") ?? "").trim() || null,
+  };
+  const { data, error } = await session.supabase
+    .from("tasks")
+    .update(payload)
+    .eq("id", taskId)
+    .select("id,project_id,song_id,event_id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase update task error:", error, payload);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Задача не найдена или нет прав на редактирование.", "Task not found or access denied."),
+    };
+  }
+  revalidateTaskPaths(data);
+  return { success: true, error: null, id: taskId };
+}
+
+export async function toggleTaskDone(
+  taskId: string,
+  currentStatus: string,
+  locale: Locale,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const nextStatus = currentStatus === "done" ? "todo" : "done";
+  const { data, error } = await session.supabase
+    .from("tasks")
+    .update({ status: nextStatus })
+    .eq("id", taskId)
+    .select("id,project_id,song_id,event_id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase toggle task error:", error);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Задача не найдена или нет прав на редактирование.", "Task not found or access denied."),
+    };
+  }
+  revalidateTaskPaths(data);
+  return { success: true, error: null, id: taskId };
+}
+
+export async function deleteTask(taskId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const { data, error } = await session.supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .select("id,project_id,song_id,event_id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase delete task error:", error);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Задача не найдена или нет прав на удаление.", "Task not found or access denied."),
+    };
+  }
+  revalidateTaskPaths(data);
+  return { success: true, error: null, id: taskId };
 }
 
 export async function createTasksFromTemplate(

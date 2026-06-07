@@ -5,12 +5,20 @@ import { TaskCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
 import { MaterialBackupEditor } from "@/components/material-backup-editor";
 import { SongDetailTabs } from "@/components/song-detail-tabs";
+import {
+  SongCoverEditor,
+  SongDangerZone,
+  SongLiveEditor,
+  SongMaterialEditor,
+  SongNotesEditor,
+  SongOverviewEditor,
+} from "@/components/song-editors";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getProfile, getProfiles } from "@/lib/data";
-import { materials, songs, tasks } from "@/lib/demo-data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
-import type { Material, Task } from "@/lib/types";
+import { getStorageDisplayUrl } from "@/lib/storage";
+import type { Material, Song, Task } from "@/lib/types";
 
 const materialTypes = [
   "demo", "lyrics", "reaper_project", "logic_project", "sibelius_project",
@@ -25,81 +33,49 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   const [profile, profiles] = await Promise.all([getProfile(), getProfiles()]);
   const t = translator(profile.locale);
   const supabase = await createClient();
-  let song = songs.find((item) => item.id === id) ?? songs[0];
-  let songMaterials: Material[] = materials
-    .filter((item) => item.song_id === song.id)
-    .map((item) => ({ ...item, backup: null }));
-  let songTasks: Task[] = tasks.filter((task) => task.song_id === id);
-
-  if (supabase) {
-    const [
-      { data: realSong, error: songError },
-      { data: realMaterials, error: materialsError },
-      { data: realTasks, error: tasksError },
-    ] = await Promise.all([
-      supabase.from("songs").select("*").eq("id", id).single(),
-      supabase
-        .from("song_materials")
-        .select("*, material_backups(*)")
-        .eq("song_id", id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("tasks")
-        .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
-        .eq("song_id", id)
-        .order("due_date"),
-    ]);
-    if (songError || !realSong) {
-      console.error("Supabase read song error:", songError);
-      notFound();
-    }
-    if (materialsError) console.error("Supabase read song materials error:", materialsError);
-    if (tasksError) console.error("Supabase read song tasks error:", tasksError);
-    song = realSong;
-    if (realMaterials) {
-      songMaterials = realMaterials.map((material) => ({
-        ...material,
-        backup: material.material_backups?.[0] ?? null,
-      }));
-    }
-    if (realTasks) songTasks = realTasks;
+  if (!supabase) notFound();
+  const [
+    { data: realSong, error: songError },
+    { data: realMaterials, error: materialsError },
+    { data: realTasks, error: tasksError },
+    { count: setlistUsageCount, error: setlistUsageError },
+  ] = await Promise.all([
+    supabase.from("songs").select("*").eq("id", id).single(),
+    supabase
+      .from("song_materials")
+      .select("*, material_backups(*)")
+      .eq("song_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("tasks")
+      .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
+      .eq("song_id", id)
+      .order("due_date"),
+    supabase
+      .from("setlist_items")
+      .select("id", { count: "exact", head: true })
+      .eq("song_id", id),
+  ]);
+  if (songError || !realSong) {
+    console.error("Supabase read song error:", songError);
+    notFound();
   }
+  if (materialsError) console.error("Supabase read song materials error:", materialsError);
+  if (tasksError) console.error("Supabase read song tasks error:", tasksError);
+  if (setlistUsageError) console.error("Supabase read song setlist usage error:", setlistUsageError);
+  const song = {
+    ...(realSong as Song),
+    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", realSong.cover_image_url),
+  };
+  const songMaterials = (realMaterials ?? []).map((material) => ({
+    ...material,
+    backup: material.material_backups?.[0] ?? null,
+  })) as Material[];
+  const songTasks = (realTasks as Task[]) ?? [];
 
-  const overview = <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
-    <div className="metal-card p-6">
-      <div className="flex items-center justify-between">
-        <StatusBadge status={song.status} />
-      </div>
-      <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5">
-        {[
-          ["BPM", song.bpm],
-          [t("song.key"), song.key],
-          [t("song.tuning"), song.tuning],
-          [t("song.timeSignature"), song.time_signature],
-          [
-            profile.locale === "en" ? "Duration" : "Длительность",
-            song.duration
-              ? `${Math.floor(song.duration / 60)}:${String(song.duration % 60).padStart(2, "0")}`
-              : "—",
-          ],
-          [profile.locale === "en" ? "Version" : "Версия", song.arrangement_version],
-        ].map(([label, value]) => <div key={label as string}>
-          <dt className="text-[9px] uppercase tracking-widest text-zinc-700">{label}</dt>
-          <dd className="mt-1 text-sm text-zinc-300">{value ?? "—"}</dd>
-        </div>)}
-      </dl>
-    </div>
-    <div className="metal-card p-6">
-      <h2 className="font-display text-lg uppercase text-white">{t("song.liveVersion")}</h2>
-      <p className="mt-3 text-sm leading-6 text-zinc-600">
-        {song.live_version_notes || (
-          profile.locale === "en"
-            ? "No live version notes yet."
-            : "Заметок к концертной версии пока нет."
-        )}
-      </p>
-      <div className="mt-5"><StatusBadge status="review" /></div>
-    </div>
+  const overview = <div>
+    <SongOverviewEditor song={song} />
+    <SongDangerZone songId={id} setlistUsageCount={setlistUsageCount ?? 0} />
   </div>;
 
   const taskContent = <div>
@@ -118,13 +94,13 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
       </span>
     </div>
     <div className="table-shell">
-      <div className="hidden grid-cols-[1fr_110px_90px_64px] border-b border-white/[.06] px-5 py-3 text-[9px] uppercase tracking-widest text-zinc-700 sm:grid">
+      <div className="hidden grid-cols-[1fr_110px_100px_132px] border-b border-white/[.06] px-5 py-3 text-[9px] uppercase tracking-widest text-zinc-700 sm:grid">
         <span>{profile.locale === "en" ? "Material" : "Материал"}</span>
         <span>{profile.locale === "en" ? "Version" : "Версия"}</span>
         <span>{profile.locale === "en" ? "Status" : "Статус"}</span>
         <span />
       </div>
-      {songMaterials.map((material) => <div key={material.id} className="grid gap-3 border-b border-white/[.055] px-4 py-4 last:border-0 sm:grid-cols-[1fr_110px_90px_64px] sm:items-center sm:px-5">
+      {songMaterials.map((material) => <div key={material.id} className="grid gap-3 border-b border-white/[.055] px-4 py-4 last:border-0 sm:grid-cols-[1fr_110px_100px_132px] sm:items-center sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[.035] text-zinc-500">
             {material.type.includes("audio") || material.type.includes("track")
@@ -144,8 +120,9 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
           <StatusBadge status={material.backup?.status ?? "missing_backup"} />
         </div>
         <div className="flex items-center gap-3">
+          <SongMaterialEditor material={material} materialTypes={materialTypes} />
           <MaterialBackupEditor materialId={material.id} songId={id} backup={material.backup} profiles={profiles} />
-          <a href={material.url} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-white"><ExternalLink size={15} /></a>
+          {material.url && <a href={material.url} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-white"><ExternalLink size={15} /></a>}
         </div>
       </div>)}
       {!songMaterials.length && <div className="p-12 text-center text-sm text-zinc-600">
@@ -154,16 +131,20 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     </div>
   </div>;
 
-  const notesContent = <div className="grid gap-5 lg:grid-cols-2">
-    <div className="metal-card p-6">
-      <h2 className="font-display text-lg uppercase text-white">{profile.locale === "en" ? "Description" : "Описание"}</h2>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-500">{song.description || t("common.noData")}</p>
-    </div>
-    <div className="metal-card p-6">
-      <h2 className="font-display text-lg uppercase text-white">{profile.locale === "en" ? "Lyrics" : "Текст"}</h2>
-      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-500">{song.lyrics || t("common.noData")}</p>
-    </div>
+  const notesContent = <SongNotesEditor song={song} />;
+  const liveContent = <SongLiveEditor song={song} />;
+  const backupContent = <div className="grid gap-3">
+    {songMaterials.map((material) => <div key={material.id} className="metal-card flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-zinc-200">{material.title}</p>
+        <p className="mt-1 text-[10px] text-zinc-600">{translateEnum(profile.locale, material.type)}</p>
+      </div>
+      <StatusBadge status={material.backup?.status ?? "missing_backup"} />
+      <MaterialBackupEditor materialId={material.id} songId={id} backup={material.backup} profiles={profiles} mode="button" />
+    </div>)}
+    {!songMaterials.length && <p className="metal-card p-10 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
   </div>;
+  const coverContent = <SongCoverEditor song={song} />;
 
   return <>
     <Link href="/songs" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
@@ -192,6 +173,9 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
       materials={materialContent}
       tasks={taskContent}
       notes={notesContent}
+      live={liveContent}
+      backups={backupContent}
+      cover={coverContent}
     />
   </>;
 }

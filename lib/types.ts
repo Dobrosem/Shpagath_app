@@ -54,6 +54,10 @@ export interface Song {
   lyrics?: string | null;
   description?: string | null;
   live_version_notes?: string | null;
+  cover_image_url?: string | null;
+  cover_display_url?: string | null;
+  cover_status?: "draft" | "review" | "approved" | "outdated" | "archived";
+  cover_notes?: string | null;
   materials_count?: number;
   missing_backups_count?: number;
 }
@@ -92,6 +96,10 @@ export interface Event {
   contact_person?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;
+  poster_image_url?: string | null;
+  poster_display_url?: string | null;
+  poster_status?: "draft" | "review" | "approved" | "outdated" | "archived";
+  poster_notes?: string | null;
 }
 
 export interface EventSetlistItem {
@@ -199,7 +207,9 @@ export interface MaterialBackup {
   backup_location?: string | null;
   has_local_copy: boolean;
   has_cloud_copy: boolean;
+  usb_copy_confirmed?: boolean;
   verified_at?: string | null;
+  last_checked_at?: string | null;
   responsible_id?: string | null;
   status: "missing_backup" | "unchecked" | "ok" | "problem";
   notes?: string | null;

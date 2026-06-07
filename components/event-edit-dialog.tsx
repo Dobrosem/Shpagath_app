@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertCircle, Loader2, Pencil, X } from "lucide-react";
+import { AlertCircle, ImageIcon, Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateEvent } from "@/app/actions";
 import type { ActionState, Event } from "@/lib/types";
 import { translateEnum } from "@/lib/i18n";
+import { getEventPosterUrl } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 
 const initialState: ActionState = { success: false, error: null };
@@ -32,6 +33,7 @@ export function EventEditDialog({
     updateEvent.bind(null, event.id),
     initialState,
   );
+  const posterUrl = getEventPosterUrl(event);
 
   useEffect(() => {
     setDateParts(eventDateParts(event.starts_at));
@@ -97,6 +99,31 @@ export function EventEditDialog({
           <label><span className="label">{label("Время", "Time")}</span><input className="field" type="time" name="time" required value={dateParts.time} onChange={(event) => setDateParts((current) => ({ ...current, time: event.target.value }))} /></label>
           {fields.map(([name, fieldLabel, type]) => <label key={name}><span className="label">{fieldLabel}</span><input className="field" name={name} type={type} defaultValue={String(event[name] ?? "")} /></label>)}
           <div className="border-t border-white/[.08] pt-5 sm:col-span-2">
+            <p className="font-display text-lg uppercase text-white">{t("poster.title")}</p>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-white/[.08] bg-black/25 sm:col-span-2">
+            {posterUrl
+              ? <img src={posterUrl} alt="" className="max-h-80 w-full object-contain" />
+              : <div className="grid min-h-40 place-items-center text-center text-zinc-600">
+                <div><ImageIcon className="mx-auto" size={34} /><p className="mt-3 text-sm">{t("poster.empty")}</p></div>
+              </div>}
+          </div>
+          <label><span className="label">{event.poster_image_url ? t("poster.replace") : t("poster.upload")}</span><input className="field py-2" type="file" name="poster_file" accept="image/*" /></label>
+          <label><span className="label">URL</span><input className="field" type="url" name="poster_image_url" defaultValue={event.poster_image_url ?? ""} /></label>
+          <label><span className="label">{t("poster.status")}</span>
+            <select className="field" name="poster_status" defaultValue={event.poster_status ?? "draft"}>
+              {["draft", "review", "approved", "outdated", "archived"].map((status) => (
+                <option key={status} value={status}>{translateEnum(locale, status)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="sm:col-span-2"><span className="label">{t("poster.notes")}</span><textarea className="field min-h-20 py-3" name="poster_notes" defaultValue={event.poster_notes ?? ""} /></label>
+          {event.poster_image_url && <div className="sm:col-span-2">
+            <button type="submit" name="remove_poster" value="true" className="button-secondary border-red-500/20 text-red-300" disabled={pending}>
+              <Trash2 size={14} />{t("poster.remove")}
+            </button>
+          </div>}
+          <div className="border-t border-white/[.08] pt-5 sm:col-span-2">
             <p className="font-display text-lg uppercase text-white">{t("eventTiming.title")}</p>
           </div>
           {timingFields.map(([name, fieldLabel]) => <label key={name}><span className="label">{fieldLabel}</span><input className="field" name={name} defaultValue={event[name] ?? ""} /></label>)}
@@ -108,7 +135,7 @@ export function EventEditDialog({
           {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 sm:col-span-2"><AlertCircle size={15} className="shrink-0" />{state.error}</div>}
           <div className="mt-2 flex justify-end gap-2 sm:col-span-2">
             <button disabled={pending} type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
-            <button disabled={pending} className="button-primary">{pending && <Loader2 size={14} className="animate-spin" />}{pending ? t("common.saving") : t("common.save")}</button>
+            <button disabled={pending} className="button-primary">{pending && <Loader2 size={14} className="animate-spin" />}{!pending && <Upload size={14} />}{pending ? t("common.saving") : t("common.save")}</button>
           </div>
         </form>
       </div>

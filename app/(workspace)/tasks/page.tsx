@@ -1,5 +1,5 @@
-import { TaskCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
+import { TaskSections } from "@/components/task-sections";
 import { PageHeader } from "@/components/ui";
 import { getProfile, getProfiles, getProjects, getTasks } from "@/lib/data";
 import { translator } from "@/lib/i18n";
@@ -28,9 +28,6 @@ export default async function TasksPage() {
           { value: "high", label: "Высокий" }, { value: "critical", label: "Критический" },
         ] }, { name: "due_date", label: "Срок", type: "date" },
       ]} />} />
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {tasks.map((task) => <TaskCard key={task.id} task={task} />)}
-      {!tasks.length && <div className="metal-card col-span-full p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No tasks yet. Create the first task." : "Задач пока нет. Создайте первую задачу."}</div>}
-    </div>
+    <TaskSections tasks={tasks} />
   </>;
 }

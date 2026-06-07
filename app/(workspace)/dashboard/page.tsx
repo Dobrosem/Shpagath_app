@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Crosshair, DatabaseBackup, FolderKanban } from "lucide-react";
-import { EventCard, TaskCard } from "@/components/cards";
+import { EventCard } from "@/components/cards";
 import { RedZone } from "@/components/red-zone";
+import { TaskSections } from "@/components/task-sections";
 import { Metric, PageHeader, SectionHeader } from "@/components/ui";
 import {
   getEvents,
@@ -32,7 +33,7 @@ export default async function DashboardPage() {
   );
   const upcomingEvents = allEvents.filter((event) => new Date(event.starts_at) >= now).slice(0, 2);
   const nearestEvent = upcomingEvents[0];
-  const nearestTasks = myWorkspace.tasks
+  const activeWorkspaceTasks = myWorkspace.tasks
     .filter((task) => !["done", "cancelled"].includes(task.status))
     .slice(0, 5);
   const missingBackups = allSongs.reduce((sum, song) => sum + (song.missing_backups_count ?? 0), 0);
@@ -64,7 +65,7 @@ export default async function DashboardPage() {
 
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Metric label={t("dashboard.activeProjects")} value={allProjects.filter((project) => project.status === "in_progress").length} />
-      <Metric label={t("dashboard.myTasks")} value={nearestTasks.length} />
+      <Metric label={t("dashboard.myTasks")} value={activeWorkspaceTasks.length} />
       <Metric label={t("dashboard.overdue")} value={overdue.length} accent />
       <Metric label={t("dashboard.nextEvent")} value={nearestEvent ? formatDate(nearestEvent.starts_at, false, profile.locale) : "—"} detail={nearestEvent?.city} />
     </section>
@@ -72,10 +73,7 @@ export default async function DashboardPage() {
     <section className="mt-8 grid gap-7 xl:grid-cols-[1.25fr_.85fr]">
       <div>
         <SectionHeader title={t("dashboard.nearestTasks")} href="/my" />
-        <div className="metal-card space-y-2 p-3">
-          {nearestTasks.map((task) => <TaskCard key={task.id} task={task} compact />)}
-          {!nearestTasks.length && <p className="p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
-        </div>
+        <TaskSections tasks={myWorkspace.tasks} compact activeLimit={5} completedLimit={5} />
       </div>
       <RedZone issues={issues} compact />
     </section>

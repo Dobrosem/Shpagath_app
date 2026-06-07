@@ -9,8 +9,9 @@ import { PageHeader, StatusBadge } from "@/components/ui";
 import { getProfile, getRedZoneIssues } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
+import { getStorageDisplayUrl } from "@/lib/storage";
 import type { Event, Task } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getEventPosterUrl } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,7 +42,15 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   if (tasksResult.error) console.error("Supabase read event tasks error:", tasksResult.error);
   if (setlistResult.error) console.error("Supabase read event setlist error:", setlistResult.error);
 
-  const event = eventResult.data as Event;
+  const event = {
+    ...(eventResult.data as Event),
+    poster_display_url: await getStorageDisplayUrl(
+      supabase,
+      "event-posters",
+      eventResult.data.poster_image_url,
+    ),
+  };
+  const posterUrl = getEventPosterUrl(event);
   const eventTasks = (tasksResult.data as Task[]) ?? [];
   const setlistItems = setlistResult.data?.items ?? [];
   const technicalLinks = [
@@ -80,6 +89,18 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     <div className="mb-7"><RedZone issues={issues} compact /></div>
     <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
       <div className="space-y-5">
+        <div className="metal-card overflow-hidden">
+          {posterUrl
+            ? <img src={posterUrl} alt={event.title} className="aspect-[4/3] w-full object-cover" />
+            : <div className="grid min-h-44 place-items-center p-6 text-center text-sm text-zinc-600">{t("poster.empty")}</div>}
+          <div className="border-t border-white/[.06] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-display text-lg uppercase text-white">{t("poster.title")}</span>
+              <StatusBadge status={event.poster_status ?? "draft"} />
+            </div>
+            {event.poster_notes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-500">{event.poster_notes}</p>}
+          </div>
+        </div>
         <div className="metal-card p-6">
           <div className="flex items-center justify-between">
             <StatusBadge status={event.status} context="event" />
