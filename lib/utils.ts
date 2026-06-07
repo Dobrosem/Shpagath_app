@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Event, Song } from "./types";
+import type { Album, Event, Song } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -35,6 +35,16 @@ function getPublicMediaUrl(value: string | null | undefined, bucket: string) {
 export function getSongDisplayCover(song: Pick<Song, "cover_image_url" | "cover_display_url">) {
   // Album cover fallback can be added here later without changing song cards.
   return song.cover_display_url || getPublicMediaUrl(song.cover_image_url, "song-covers");
+}
+
+export function getAlbumCoverUrl(album: Pick<Album, "cover_image_url" | "cover_display_url">) {
+  return album.cover_display_url || getPublicMediaUrl(album.cover_image_url, "album-covers");
+}
+
+export function getSongResolvedCover(
+  song: Pick<Song, "cover_image_url" | "cover_display_url" | "album">,
+) {
+  return song.album ? getAlbumCoverUrl(song.album) || getSongDisplayCover(song) : getSongDisplayCover(song);
 }
 
 export function getEventPosterUrl(event: Pick<Event, "poster_image_url" | "poster_display_url">) {

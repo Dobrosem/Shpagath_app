@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Loader2, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Disc3, Loader2, Trash2 } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
 import { saveEventSetlist } from "@/app/actions";
 import type { ActionState, EventSetlistItem, Song } from "@/lib/types";
+import { getSongResolvedCover } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 
 const initialState: ActionState = { success: false, error: null };
 
-type SelectedSong = Pick<Song, "id" | "title" | "bpm" | "key" | "tuning"> & {
+type SelectedSong = Pick<Song, "id" | "title" | "bpm" | "key" | "tuning" | "cover_image_url" | "cover_display_url" | "album"> & {
   live_version: string;
   notes: string;
 };
@@ -29,7 +30,8 @@ export function SetlistBuilder({
     [...initialItems]
       .sort((a, b) => a.order_index - b.order_index)
       .flatMap((item) => {
-        const song = item.song ?? songsById.get(item.song_id);
+        const catalogSong = songsById.get(item.song_id);
+        const song = catalogSong ? { ...catalogSong, ...item.song } : item.song;
         if (!song) return [];
         return [{
           id: song.id,
@@ -37,6 +39,9 @@ export function SetlistBuilder({
           bpm: song.bpm,
           key: song.key,
           tuning: song.tuning,
+          cover_image_url: catalogSong?.cover_image_url,
+          cover_display_url: catalogSong?.cover_display_url,
+          album: catalogSong?.album,
           live_version: item.live_version ?? "",
           notes: item.notes ?? "",
         }];
@@ -58,6 +63,9 @@ export function SetlistBuilder({
             bpm: song.bpm,
             key: song.key,
             tuning: song.tuning,
+            cover_image_url: song.cover_image_url,
+            cover_display_url: song.cover_display_url,
+            album: song.album,
             live_version: song.arrangement_version ?? "",
             notes: song.live_version_notes ?? "",
           }]);
@@ -105,6 +113,7 @@ export function SetlistBuilder({
         {songs.length ? <div className="mt-4 max-h-[62vh] space-y-1 overflow-y-auto pr-1">
           {songs.map((song) => {
             const checked = selectedIds.has(song.id);
+            const coverUrl = getSongResolvedCover(song);
             return <label
               key={song.id}
               className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2 transition hover:border-white/[.08] hover:bg-white/[.025]"
@@ -115,10 +124,13 @@ export function SetlistBuilder({
                 checked={checked}
                 onChange={(event) => toggleSong(song, event.target.checked)}
               />
+              <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border border-white/[.08] bg-zinc-950">
+                {coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" /> : <Disc3 size={16} className="text-zinc-700" />}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-zinc-200">{song.title}</span>
                 <span className="block text-[10px] uppercase tracking-wide text-zinc-600">
-                  {[song.bpm && `${song.bpm} BPM`, song.key, song.tuning].filter(Boolean).join(" · ") || "—"}
+                  {[song.album?.title, song.bpm && `${song.bpm} BPM`, song.key, song.tuning].filter(Boolean).join(" · ") || "—"}
                 </span>
               </span>
               {checked && <CheckCircle2 size={14} className="text-emerald-400" />}
@@ -148,10 +160,13 @@ export function SetlistBuilder({
                 <span className="mt-1 w-7 shrink-0 font-display text-lg text-zinc-700">
                   {String(index + 1).padStart(2, "0")}
                 </span>
+                <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-white/[.08] bg-zinc-950">
+                  {getSongResolvedCover(song) ? <img src={getSongResolvedCover(song)!} alt="" className="h-full w-full object-cover" /> : <Disc3 size={16} className="text-zinc-700" />}
+                </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-medium text-zinc-100">{song.title}</h3>
                   <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-600">
-                    {[song.bpm && `${song.bpm} BPM`, song.key, song.tuning].filter(Boolean).join(" · ") || "—"}
+                    {[song.album?.title, song.bpm && `${song.bpm} BPM`, song.key, song.tuning].filter(Boolean).join(" · ") || "—"}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">

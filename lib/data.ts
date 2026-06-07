@@ -3,6 +3,7 @@ import { demoProfile, events, people, projects, songs, tasks } from "./demo-data
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
 import { getStorageDisplayUrl } from "./storage";
 import type {
+  Album,
   Contact,
   Event,
   EventSetlist,
@@ -101,11 +102,17 @@ export async function getSongs(): Promise<Song[]> {
   if (!supabase) return songs;
   const { data, error } = await supabase
     .from("songs")
-    .select("*, song_materials(type, material_backups(status))")
+    .select("*, album:albums(id,title,type,status,cover_image_url), song_materials(type, material_backups(status))")
     .order("created_at", { ascending: false });
   reportReadError("songs", error);
-  return Promise.all((data ?? []).map(async (song) => ({
+  return Promise.all((data ?? []).map(async (song) => {
+    const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    return {
     ...song,
+    album: album ? {
+      ...album,
+      cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+    } : null,
     cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
     materials_count: song.song_materials?.length ?? 0,
     missing_backups_count: (song.song_materials ?? []).filter(
@@ -113,7 +120,46 @@ export async function getSongs(): Promise<Song[]> {
         criticalMaterialTypes.has(material.type)
         && material.material_backups?.[0]?.status !== "ok",
     ).length,
-  }))) as Promise<Song[]>;
+  };})) as Promise<Song[]>;
+}
+
+export async function getAlbums(): Promise<Album[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("albums")
+    .select("*, songs(id,title,track_number)")
+    .order("release_date", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  reportReadError("albums", error);
+  return Promise.all(((data as Album[]) ?? []).map(async (album) => ({
+    ...album,
+    cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+    songs_count: album.songs?.length ?? 0,
+  })));
+}
+
+export async function getAlbum(id: string): Promise<Album | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("albums")
+    .select("*, songs(*)")
+    .eq("id", id)
+    .order("track_number", { referencedTable: "songs", ascending: true, nullsFirst: false })
+    .maybeSingle();
+  reportReadError("album", error);
+  if (!data) return null;
+  const album = data as Album;
+  return {
+    ...album,
+    cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+    songs: await Promise.all((album.songs ?? []).map(async (song) => ({
+      ...song,
+      cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+    }))),
+    songs_count: album.songs?.length ?? 0,
+  };
 }
 
 export async function getEvents(): Promise<Event[]> {
@@ -315,7 +361,7 @@ export async function getMyWorkspace() {
 
   const [songResult, relatedMaterialsResult, eventResult] = await Promise.all([
     songIds.size
-      ? supabase.from("songs").select("*").in("id", [...songIds])
+      ? supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").in("id", [...songIds])
       : Promise.resolve({ data: [], error: null }),
     songIds.size
       ? supabase.from("song_materials").select("*, material_backups(*)").in("song_id", [...songIds])
@@ -341,10 +387,17 @@ export async function getMyWorkspace() {
       || rehearsal.participants?.includes(user.id),
   );
 
-  const mySongs = await Promise.all(((songResult.data as Song[]) ?? []).map(async (song) => ({
-    ...song,
-    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
-  })));
+  const mySongs = await Promise.all(((songResult.data as Song[]) ?? []).map(async (song) => {
+    const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    return {
+      ...song,
+      album: album ? {
+        ...album,
+        cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+      } : null,
+      cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+    };
+  }));
   const myEvents = await Promise.all(((eventResult.data as Event[]) ?? []).map(async (event) => ({
     ...event,
     poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),

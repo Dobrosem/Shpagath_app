@@ -7,7 +7,7 @@ import { AlertCircle, ArrowUpRight, AudioLines, Building2, CheckCircle2, Circle,
 import { deleteTask, toggleTaskDone, updateTask } from "@/app/actions";
 import type { ActionState, Event, Profile, Project, Song, Task } from "@/lib/types";
 import { DateMeta, PriorityBadge, StatusBadge } from "./ui";
-import { cn, formatDate, formatDuration, getEventPosterUrl, getSongDisplayCover, initials } from "@/lib/utils";
+import { cn, formatDate, formatDuration, getEventPosterUrl, getSongResolvedCover, initials } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 import { translateEnum } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
@@ -184,7 +184,7 @@ export function ProjectCard({ project }: { project: Project }) {
 
 export function SongCard({ song }: { song: Song }) {
   const { t } = useI18n();
-  const displayCoverUrl = getSongDisplayCover(song);
+  const displayCoverUrl = getSongResolvedCover(song);
   return <Link href={`/songs/${song.id}`} className="metal-card group relative overflow-hidden transition hover:border-white/15">
     <div className="relative aspect-[16/9] overflow-hidden border-b border-white/[.06] bg-zinc-950">
       {displayCoverUrl
@@ -199,7 +199,9 @@ export function SongCard({ song }: { song: Song }) {
       </div>
     </div>
     <div className="p-5">
-    <p className="text-[10px] uppercase tracking-[.16em] text-zinc-600">{song.subtitle}</p>
+    <p className="text-[10px] uppercase tracking-[.16em] text-zinc-600">
+      {[song.album?.title, song.track_number ? `#${String(song.track_number).padStart(2, "0")}` : null, song.subtitle].filter(Boolean).join(" · ")}
+    </p>
     <h3 className="mt-1 font-display text-xl uppercase tracking-wide text-zinc-100 group-hover:text-white">{song.title}</h3>
     <div className="mt-5 grid grid-cols-4 gap-2 border-t border-white/[.06] pt-4">
       {[["BPM", song.bpm], [t("song.key"), song.key], [t("song.tuning"), song.tuning], [t("song.timeSignature"), song.time_signature]].map(([key, value]) =>

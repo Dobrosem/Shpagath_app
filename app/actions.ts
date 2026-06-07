@@ -131,6 +131,25 @@ async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: strin
   }
 }
 
+async function revalidateAlbumPaths(supabase: ServerSupabaseClient, albumId: string) {
+  revalidatePath("/albums");
+  revalidatePath(`/albums/${albumId}`);
+  revalidatePath("/songs");
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+  const { data, error } = await supabase
+    .from("songs")
+    .select("id")
+    .eq("album_id", albumId);
+  if (error) {
+    console.error("Supabase read album songs for revalidation error:", error);
+    return;
+  }
+  for (const song of data ?? []) {
+    await revalidateSongPaths(supabase, song.id);
+  }
+}
+
 function localized(locale: Locale, ru: string, en: string) {
   return locale === "en" ? en : ru;
 }
@@ -223,6 +242,329 @@ export async function createTask(
   formData: FormData,
 ) {
   return insertEntity("tasks", "/tasks", formData);
+}
+
+const albumTypes = new Set(["album", "ep", "single", "live", "demo", "compilation"]);
+const albumStatuses = new Set(["draft", "in_progress", "review", "approved", "released", "archived"]);
+const albumCoverStatuses = new Set(["draft", "review", "approved", "outdated", "archived"]);
+
+function albumPayload(formData: FormData, locale: Locale) {
+  const title = String(formData.get("title") ?? "").trim();
+  const type = String(formData.get("type") ?? "album").trim();
+  const status = String(formData.get("status") ?? "draft").trim();
+  const releaseDate = String(formData.get("release_date") ?? "").trim();
+  const coverImageUrl = String(formData.get("cover_image_url") ?? "").trim();
+  const coverStatus = String(formData.get("cover_status") ?? "draft").trim();
+  if (!title) {
+    return { error: localized(locale, "Введите название альбома.", "Enter the album title."), payload: null };
+  }
+  if (!albumTypes.has(type)) {
+    return { error: localized(locale, "Выберите корректный тип релиза.", "Select a valid release type."), payload: null };
+  }
+  if (!albumStatuses.has(status)) {
+    return { error: localized(locale, "Выберите корректный статус альбома.", "Select a valid album status."), payload: null };
+  }
+  if (!albumCoverStatuses.has(coverStatus)) {
+    return { error: localized(locale, "Выберите корректный статус обложки.", "Select a valid cover status."), payload: null };
+  }
+  if (coverImageUrl) {
+    try {
+      new URL(coverImageUrl);
+    } catch {
+      return { error: localized(locale, "Введите корректную ссылку на обложку.", "Enter a valid cover URL."), payload: null };
+    }
+  }
+  if (releaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) {
+    return { error: localized(locale, "Укажите корректную дату релиза.", "Enter a valid release date."), payload: null };
+  }
+  return {
+    error: null,
+    payload: {
+      title,
+      type,
+      status,
+      release_date: releaseDate || null,
+      description: String(formData.get("description") ?? "").trim() || null,
+      cover_image_url: coverImageUrl || null,
+      cover_status: coverStatus,
+      cover_notes: String(formData.get("cover_notes") ?? "").trim() || null,
+    },
+  };
+}
+
+export async function createAlbum(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const result = albumPayload(formData, locale);
+  if (!result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("albums")
+    .insert({ ...result.payload, created_by: session.user.id })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("Supabase create album error:", error, result.payload);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  revalidatePath("/albums");
+  revalidatePath("/songs");
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateAlbum(
+  albumId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const result = albumPayload(formData, locale);
+  if (!result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("albums")
+    .update(result.payload)
+    .eq("id", albumId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase update album error:", error, result.payload);
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+  if (!data) {
+    return {
+      success: false,
+      error: localized(locale, "Альбом не найден или нет прав на редактирование.", "Album not found or access denied."),
+    };
+  }
+  await revalidateAlbumPaths(session.supabase, albumId);
+  return { success: true, error: null, id: albumId };
+}
+
+export async function updateAlbumCover(
+  albumId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const coverStatus = String(formData.get("cover_status") ?? "draft").trim();
+  if (!albumCoverStatuses.has(coverStatus)) {
+    return {
+      success: false,
+      error: localized(locale, "Выберите корректный статус обложки.", "Select a valid cover status."),
+    };
+  }
+
+  let coverImageUrl: string | null | undefined;
+  let uploadedStoragePath: string | null = null;
+  if (formData.get("remove_cover") === "true") {
+    coverImageUrl = null;
+  } else {
+    const file = formData.get("cover_file");
+    if (file instanceof File && file.size > 0) {
+      if (!file.type.startsWith("image/")) {
+        return { success: false, error: localized(locale, "Выберите файл изображения.", "Select an image file.") };
+      }
+      if (file.size > 7 * 1024 * 1024) {
+        return { success: false, error: localized(locale, "Изображение должно быть меньше 7 МБ.", "The image must be smaller than 7 MB.") };
+      }
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+      uploadedStoragePath = `${albumId}/${Date.now()}-${safeName || "cover"}`;
+      const uploadResult = await session.supabase.storage
+        .from("album-covers")
+        .upload(uploadedStoragePath, file, { contentType: file.type, upsert: false });
+      if (uploadResult.error) {
+        console.error("Supabase upload album cover error:", uploadResult.error);
+        return {
+          success: false,
+          error: localized(
+            locale,
+            "Не удалось загрузить обложку. Проверьте bucket album-covers и Storage policies.",
+            "Could not upload the cover. Check the album-covers bucket and Storage policies.",
+          ),
+        };
+      }
+      coverImageUrl = session.supabase.storage.from("album-covers").getPublicUrl(uploadedStoragePath).data.publicUrl;
+    } else {
+      const manualUrl = String(formData.get("cover_image_url") ?? "").trim();
+      if (manualUrl) {
+        try {
+          new URL(manualUrl);
+        } catch {
+          return { success: false, error: localized(locale, "Введите корректную ссылку на обложку.", "Enter a valid cover URL.") };
+        }
+      }
+      coverImageUrl = manualUrl || null;
+    }
+  }
+
+  const payload: Record<string, string | null> = {
+    cover_status: coverStatus,
+    cover_notes: String(formData.get("cover_notes") ?? "").trim() || null,
+  };
+  if (coverImageUrl !== undefined) payload.cover_image_url = coverImageUrl;
+  const { data, error } = await session.supabase
+    .from("albums")
+    .update(payload)
+    .eq("id", albumId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    if (uploadedStoragePath) {
+      await session.supabase.storage.from("album-covers").remove([uploadedStoragePath]);
+    }
+    if (error) console.error("Supabase update album cover error:", error, payload);
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Альбом не найден или нет прав на редактирование.", "Album not found or access denied."),
+    };
+  }
+  await revalidateAlbumPaths(session.supabase, albumId);
+  return { success: true, error: null, id: albumId, count: uploadedStoragePath ? 1 : 0 };
+}
+
+export async function deleteAlbum(albumId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  const { data: album, error: readError } = await session.supabase
+    .from("albums")
+    .select("id,cover_image_url,songs(id)")
+    .eq("id", albumId)
+    .maybeSingle();
+  if (readError || !album) {
+    if (readError) console.error("Supabase read album before delete error:", readError);
+    return {
+      success: false,
+      error: readError
+        ? localizedReadableError(locale, readError.message)
+        : localized(locale, "Альбом не найден.", "Album not found."),
+    };
+  }
+  const songIds = (album.songs ?? []).map((song: { id: string }) => song.id);
+  const { data, error } = await session.supabase
+    .from("albums")
+    .delete()
+    .eq("id", albumId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error("Supabase delete album error:", error);
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Нет прав на удаление альбома.", "You do not have permission to delete this album."),
+    };
+  }
+  revalidatePath("/albums");
+  revalidatePath("/songs");
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+  for (const songId of songIds) await revalidateSongPaths(session.supabase, songId);
+  const prefix = "/storage/v1/object/public/album-covers/";
+  if (album.cover_image_url?.includes(prefix)) {
+    const path = decodeURIComponent(album.cover_image_url.split(prefix)[1]?.split("?")[0] ?? "");
+    if (path) {
+      const removeResult = await session.supabase.storage.from("album-covers").remove([path]);
+      if (removeResult.error) console.error("Supabase delete album cover object error:", removeResult.error);
+    }
+  }
+  return { success: true, error: null, id: albumId };
+}
+
+async function saveSongAlbum(
+  songId: string,
+  albumId: string | null,
+  trackNumber: number | null,
+  locale: Locale,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+  if (trackNumber !== null && (!Number.isInteger(trackNumber) || trackNumber < 1)) {
+    return { success: false, error: localized(locale, "Номер трека должен быть положительным целым числом.", "Track number must be a positive whole number.") };
+  }
+  if (albumId) {
+    const { data: targetAlbum, error: albumError } = await session.supabase
+      .from("albums")
+      .select("id")
+      .eq("id", albumId)
+      .maybeSingle();
+    if (albumError || !targetAlbum) {
+      return {
+        success: false,
+        error: albumError
+          ? localizedReadableError(locale, albumError.message)
+          : localized(locale, "Альбом не найден.", "Album not found."),
+      };
+    }
+  }
+  const { data: currentSong } = await session.supabase
+    .from("songs")
+    .select("album_id")
+    .eq("id", songId)
+    .maybeSingle();
+  const { data, error } = await session.supabase
+    .from("songs")
+    .update({ album_id: albumId, track_number: albumId ? trackNumber : null })
+    .eq("id", songId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error("Supabase assign song album error:", error);
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Песня не найдена или нет прав на редактирование.", "Song not found or access denied."),
+    };
+  }
+  if (currentSong?.album_id) await revalidateAlbumPaths(session.supabase, currentSong.album_id);
+  if (albumId) await revalidateAlbumPaths(session.supabase, albumId);
+  await revalidateSongPaths(session.supabase, songId);
+  return { success: true, error: null, id: songId };
+}
+
+export async function assignSongToAlbum(
+  songId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const albumId = String(formData.get("album_id") ?? "").trim();
+  const rawTrack = String(formData.get("track_number") ?? "").trim();
+  return saveSongAlbum(songId, albumId || null, rawTrack ? Number(rawTrack) : null, locale);
+}
+
+export async function removeSongFromAlbum(songId: string, albumId: string, locale: Locale) {
+  void albumId;
+  return saveSongAlbum(songId, null, null, locale);
+}
+
+export async function updateSongTrackNumber(
+  songId: string,
+  albumId: string,
+  trackNumber: number,
+  locale: Locale,
+) {
+  return saveSongAlbum(songId, albumId, trackNumber, locale);
 }
 
 export async function updateEntity(

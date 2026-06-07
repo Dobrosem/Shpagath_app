@@ -1,7 +1,7 @@
-import { SongCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
+import { SongsCatalog } from "@/components/songs-catalog";
 import { PageHeader } from "@/components/ui";
-import { getProfile, getSongs } from "@/lib/data";
+import { getAlbums, getProfile, getSongs } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 const statusOptions = [
@@ -11,7 +11,7 @@ const statusOptions = [
 ].map(([value, label]) => ({ value, label }));
 
 export default async function SongsPage() {
-  const [songs, profile] = await Promise.all([getSongs(), getProfile()]);
+  const [songs, albums, profile] = await Promise.all([getSongs(), getAlbums(), getProfile()]);
   const t = translator(profile.locale);
   return <>
     <PageHeader eyebrow={profile.locale === "en" ? "Repertoire" : "Репертуар"} title={t("page.songs.title")} description={t("page.songs.description")}
@@ -27,9 +27,6 @@ export default async function SongsPage() {
         { name: "lyrics", label: "Текст песни", type: "textarea" },
         { name: "live_version_notes", label: "Заметки к концертной версии", type: "textarea" },
       ]} />} />
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-      {songs.map((song) => <SongCard key={song.id} song={song} />)}
-      {!songs.length && <div className="metal-card col-span-full p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No songs yet. Create the first song." : "Песен пока нет. Создайте первую песню."}</div>}
-    </div>
+    <SongsCatalog songs={songs} albums={albums} />
   </>;
 }

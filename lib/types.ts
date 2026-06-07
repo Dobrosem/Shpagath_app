@@ -2,6 +2,9 @@ export type Role = "admin" | "member" | "guest" | "session_musician" | "manager"
 export type Locale = "ru" | "en";
 export type Status = "idea" | "draft" | "todo" | "demo" | "arrangement" | "recording" | "mixing" | "mastering" | "in_progress" | "waiting" | "review" | "approved" | "done" | "archived" | "cancelled" | "ready" | "live_ready" | "planned" | "announced" | "scheduled" | "published";
 export type Priority = "low" | "normal" | "high" | "critical";
+export type AlbumType = "album" | "ep" | "single" | "live" | "demo" | "compilation";
+export type AlbumStatus = "draft" | "in_progress" | "review" | "approved" | "released" | "archived";
+export type CoverStatus = "draft" | "review" | "approved" | "outdated" | "archived";
 
 export interface Profile {
   id: string;
@@ -40,6 +43,24 @@ export interface Task {
   assignee?: Pick<Profile, "id" | "full_name">;
 }
 
+export interface Album {
+  id: string;
+  title: string;
+  type: AlbumType;
+  status: AlbumStatus;
+  release_date?: string | null;
+  cover_image_url?: string | null;
+  cover_display_url?: string | null;
+  cover_status: CoverStatus;
+  cover_notes?: string | null;
+  description?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  songs?: Song[];
+  songs_count?: number;
+}
+
 export interface Song {
   id: string;
   title: string;
@@ -56,8 +77,11 @@ export interface Song {
   live_version_notes?: string | null;
   cover_image_url?: string | null;
   cover_display_url?: string | null;
-  cover_status?: "draft" | "review" | "approved" | "outdated" | "archived";
+  cover_status?: CoverStatus;
   cover_notes?: string | null;
+  album_id?: string | null;
+  track_number?: number | null;
+  album?: Pick<Album, "id" | "title" | "type" | "status" | "cover_image_url" | "cover_display_url"> | null;
   materials_count?: number;
   missing_backups_count?: number;
 }
@@ -98,7 +122,7 @@ export interface Event {
   contact_email?: string | null;
   poster_image_url?: string | null;
   poster_display_url?: string | null;
-  poster_status?: "draft" | "review" | "approved" | "outdated" | "archived";
+  poster_status?: CoverStatus;
   poster_notes?: string | null;
 }
 

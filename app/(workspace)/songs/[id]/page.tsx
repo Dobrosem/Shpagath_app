@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink, FileAudio, FileMusic, FileText } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
+import { SongAlbumEditor } from "@/components/album-components";
 import { EntityDialog } from "@/components/entity-dialog";
 import { MaterialBackupEditor } from "@/components/material-backup-editor";
 import { SongDetailTabs } from "@/components/song-detail-tabs";
@@ -14,7 +15,7 @@ import {
   SongOverviewEditor,
 } from "@/components/song-editors";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { getProfile, getProfiles } from "@/lib/data";
+import { getAlbums, getProfile, getProfiles } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -30,7 +31,7 @@ const materialTypes = [
 
 export default async function SongPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [profile, profiles] = await Promise.all([getProfile(), getProfiles()]);
+  const [profile, profiles, albums] = await Promise.all([getProfile(), getProfiles(), getAlbums()]);
   const t = translator(profile.locale);
   const supabase = await createClient();
   if (!supabase) notFound();
@@ -40,7 +41,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     { data: realTasks, error: tasksError },
     { count: setlistUsageCount, error: setlistUsageError },
   ] = await Promise.all([
-    supabase.from("songs").select("*").eq("id", id).single(),
+    supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").eq("id", id).single(),
     supabase
       .from("song_materials")
       .select("*, material_backups(*)")
@@ -63,9 +64,14 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   if (materialsError) console.error("Supabase read song materials error:", materialsError);
   if (tasksError) console.error("Supabase read song tasks error:", tasksError);
   if (setlistUsageError) console.error("Supabase read song setlist usage error:", setlistUsageError);
+  const rawAlbum = Array.isArray(realSong.album) ? realSong.album[0] : realSong.album;
   const song = {
     ...(realSong as Song),
     cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", realSong.cover_image_url),
+    album: rawAlbum ? {
+      ...rawAlbum,
+      cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", rawAlbum.cover_image_url),
+    } : null,
   };
   const songMaterials = (realMaterials ?? []).map((material) => ({
     ...material,
@@ -75,6 +81,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
 
   const overview = <div>
     <SongOverviewEditor song={song} />
+    {["admin", "member", "manager"].includes(profile.role) && <SongAlbumEditor song={song} albums={albums} />}
     <SongDangerZone songId={id} setlistUsageCount={setlistUsageCount ?? 0} />
   </div>;
 

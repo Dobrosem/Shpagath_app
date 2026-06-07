@@ -9,7 +9,7 @@ import { translateEnum } from "@/lib/i18n";
 
 export function StatusBadge({ status, context }: { status: Status | string; context?: string }) {
   const { locale } = useI18n();
-  const tone = ["done", "approved", "ready", "live_ready", "published", "active"].includes(status)
+  const tone = ["done", "approved", "released", "ready", "live_ready", "published", "active"].includes(status)
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
     : ["in_progress", "mixing", "recording", "announced"].includes(status)
       ? "border-blue-500/25 bg-blue-500/10 text-blue-300"

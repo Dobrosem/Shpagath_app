@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays, CheckSquare2, CircleDollarSign, ContactRound,
-  FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, PackageCheck, Settings,
+  Disc3, FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, PackageCheck, Settings,
   SlidersHorizontal, UserRound, UsersRound, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -20,6 +20,7 @@ const navigation = [
   { href: "/projects", key: "nav.projects" as const, icon: FolderKanban },
   { href: "/tasks", key: "nav.tasks" as const, icon: CheckSquare2 },
   { href: "/songs", key: "nav.songs" as const, icon: Music2 },
+  { href: "/albums", key: "nav.albums" as const, icon: Disc3 },
   { href: "/events", key: "nav.events" as const, icon: CalendarDays },
   { href: "/rehearsals", key: "nav.rehearsals" as const, icon: UsersRound },
   { href: "/promo", key: "nav.promo" as const, icon: Megaphone },
