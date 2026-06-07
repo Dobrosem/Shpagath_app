@@ -208,7 +208,7 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
       supabase.from("promo_materials").select("*"),
       supabase.from("song_materials").select("*, song:songs(title)"),
       supabase.from("material_backups").select("*"),
-      supabase.from("setlists").select("event_id"),
+      supabase.from("setlists").select("event_id, setlist_items(count)"),
     ]);
 
   reportReadError("red zone tasks", tasksResult.error);
@@ -235,6 +235,7 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
     backups: (backupsResult.data as MaterialBackup[]) ?? [],
     setlistEventIds: new Set(
       (setlistsResult.data ?? [])
+        .filter((setlist) => (setlist.setlist_items?.[0]?.count ?? 0) > 0)
         .map((setlist) => setlist.event_id as string)
         .filter((id) => !eventId || selectedEventIds.has(id)),
     ),
