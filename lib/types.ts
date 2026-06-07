@@ -32,6 +32,10 @@ export interface Task {
   priority: Priority;
   due_date?: string | null;
   project_id?: string | null;
+  song_id?: string | null;
+  event_id?: string | null;
+  assignee_id?: string | null;
+  created_by?: string | null;
   project?: Pick<Project, "id" | "title">;
   assignee?: Pick<Profile, "id" | "full_name">;
 }
@@ -51,6 +55,7 @@ export interface Song {
   description?: string | null;
   live_version_notes?: string | null;
   materials_count?: number;
+  missing_backups_count?: number;
 }
 
 export interface Event {
@@ -60,9 +65,21 @@ export interface Event {
   venue?: string | null;
   starts_at: string;
   status: Status;
+  project_id?: string | null;
   call_time?: string | null;
   soundcheck_time?: string | null;
   performance_time?: string | null;
+  ticket_url?: string | null;
+  tech_rider_url?: string | null;
+  stage_plot_url?: string | null;
+  light_timing_url?: string | null;
+  video_timing_url?: string | null;
+  tech_notes?: string | null;
+  vk_event_url?: string | null;
+  description?: string | null;
+  contact_person?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
 }
 
 export interface Material {
@@ -74,15 +91,19 @@ export interface Material {
   version?: string | null;
   status: "active" | "outdated" | "draft" | "approved" | "archived";
   notes?: string | null;
+  created_by?: string | null;
+  backup?: MaterialBackup | null;
 }
 
 export interface Rehearsal {
   id: string;
+  project_id?: string | null;
   title: string;
   starts_at: string;
   location?: string | null;
   goals?: string | null;
   status?: Status;
+  participants?: string[];
 }
 
 export interface PromoMaterial {
@@ -92,6 +113,85 @@ export interface PromoMaterial {
   platform?: string | null;
   status: Status;
   publish_date?: string | null;
+  event_id?: string | null;
+  project_id?: string | null;
+}
+
+export interface TaskTemplateItem {
+  id: string;
+  template_id: string;
+  title: string;
+  description?: string | null;
+  relative_day: number;
+  priority: Priority;
+  default_role?: Role | null;
+  order_index: number;
+}
+
+export interface TaskTemplate {
+  id: string;
+  title: string;
+  type: string;
+  description?: string | null;
+  items?: TaskTemplateItem[];
+}
+
+export interface PackingListItem {
+  id: string;
+  packing_list_id: string;
+  title: string;
+  category: string;
+  quantity: number;
+  packed: boolean;
+  responsible_id?: string | null;
+  responsible?: Pick<Profile, "id" | "full_name"> | null;
+  notes?: string | null;
+  order_index: number;
+}
+
+export interface PackingList {
+  id: string;
+  title: string;
+  type: string;
+  event_id?: string | null;
+  project_id?: string | null;
+  created_by: string;
+  event?: Pick<Event, "id" | "title"> | null;
+  project?: Pick<Project, "id" | "title"> | null;
+  items?: PackingListItem[];
+  created_at?: string;
+}
+
+export interface MaterialBackup {
+  id: string;
+  material_id: string;
+  backup_url?: string | null;
+  backup_location?: string | null;
+  has_local_copy: boolean;
+  has_cloud_copy: boolean;
+  verified_at?: string | null;
+  responsible_id?: string | null;
+  status: "missing_backup" | "unchecked" | "ok" | "problem";
+  notes?: string | null;
+}
+
+export type RedZoneKind =
+  | "overdue_task"
+  | "critical_task"
+  | "missing_ticket"
+  | "overdue_promo"
+  | "missing_backup"
+  | "missing_setlist"
+  | "missing_rider"
+  | "missing_battle_sheet";
+
+export interface RedZoneIssue {
+  id: string;
+  kind: RedZoneKind;
+  severity: "warning" | "critical";
+  title: string;
+  href: string;
+  date?: string | null;
 }
 
 export interface Contact {
@@ -118,4 +218,5 @@ export interface ActionState {
   success: boolean;
   error: string | null;
   id?: string;
+  count?: number;
 }

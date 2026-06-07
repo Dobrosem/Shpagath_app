@@ -5,6 +5,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createEntity,
+  createPackingList,
   createSong,
   createTask,
 } from "@/app/actions";
@@ -32,7 +33,8 @@ type EntityTable =
   | "rehearsals"
   | "promo_materials"
   | "contacts"
-  | "finance_records";
+  | "finance_records"
+  | "packing_lists";
 
 const initialActionState: ActionState = { success: false, error: null };
 
@@ -55,7 +57,9 @@ export function EntityDialog({
   const router = useRouter();
   const { locale, t } = useI18n();
   const text = (value: string) => translateLiteral(locale, value);
-  const action = table === "songs"
+  const action = table === "packing_lists"
+    ? createPackingList
+    : table === "songs"
     ? createSong
     : table === "tasks"
       ? createTask

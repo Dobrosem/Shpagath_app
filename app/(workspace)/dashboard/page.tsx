@@ -1,47 +1,112 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CalendarClock, Crosshair, Plus } from "lucide-react";
-import { EventCard, ProjectCard, TaskCard } from "@/components/cards";
+import { Crosshair, DatabaseBackup, Plus } from "lucide-react";
+import { EventCard, TaskCard } from "@/components/cards";
+import { RedZone } from "@/components/red-zone";
 import { Metric, PageHeader, SectionHeader } from "@/components/ui";
-import { activity } from "@/lib/demo-data";
-import { getEvents, getProfile, getProjects, getTasks } from "@/lib/data";
+import {
+  getEvents,
+  getMyWorkspace,
+  getProfile,
+  getProjects,
+  getRedZoneIssues,
+  getSongs,
+  getTasks,
+} from "@/lib/data";
 import { translator } from "@/lib/i18n";
+import { formatDate } from "@/lib/utils";
 
 export default async function DashboardPage() {
-  const [allProjects, allTasks, allEvents, profile] = await Promise.all([getProjects(), getTasks(), getEvents(), getProfile()]);
+  const [allProjects, allTasks, allEvents, allSongs, myWorkspace, issues, profile] = await Promise.all([
+    getProjects(),
+    getTasks(),
+    getEvents(),
+    getSongs(),
+    getMyWorkspace(),
+    getRedZoneIssues(),
+    getProfile(),
+  ]);
   const t = translator(profile.locale);
-  const overdue = allTasks.filter((task) => task.due_date && new Date(task.due_date) < new Date() && task.status !== "done");
+  const now = new Date();
+  const overdue = allTasks.filter(
+    (task) => task.due_date && new Date(task.due_date) < now && !["done", "cancelled"].includes(task.status),
+  );
+  const upcomingEvents = allEvents.filter((event) => new Date(event.starts_at) >= now).slice(0, 2);
+  const nearestEvent = upcomingEvents[0];
+  const nearestTasks = myWorkspace.tasks
+    .filter((task) => !["done", "cancelled"].includes(task.status))
+    .slice(0, 5);
+  const missingBackups = allSongs.reduce((sum, song) => sum + (song.missing_backups_count ?? 0), 0);
+  const deadlines = [
+    ...allProjects.filter((project) => project.deadline).map((project) => ({
+      id: `project-${project.id}`,
+      title: project.title,
+      date: project.deadline!,
+      href: `/projects/${project.id}`,
+    })),
+    ...allTasks.filter((task) => task.due_date && !["done", "cancelled"].includes(task.status)).map((task) => ({
+      id: `task-${task.id}`,
+      title: task.title,
+      date: task.due_date!,
+      href: "/tasks",
+    })),
+  ].sort((left, right) => left.date.localeCompare(right.date)).slice(0, 6);
+
   return <>
-    <PageHeader eyebrow={t("page.dashboard.eyebrow")} title={t("page.dashboard.title")} description={t("page.dashboard.description")}
-      action={<div className="flex gap-2"><Link href="/tasks" className="button-secondary"><Crosshair size={15} />Мои задачи</Link><Link href="/projects" className="button-primary"><Plus size={15} />Новый проект</Link></div>} />
+    <PageHeader
+      eyebrow={t("page.dashboard.eyebrow")}
+      title={t("page.dashboard.title")}
+      description={t("page.dashboard.description")}
+      action={<div className="flex gap-2">
+        <Link href="/my" className="button-secondary"><Crosshair size={15} />{t("nav.my")}</Link>
+        <Link href="/projects" className="button-primary"><Plus size={15} />{t("common.create")}</Link>
+      </div>}
+    />
 
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Metric label="Активные проекты" value={allProjects.filter((p) => p.status === "in_progress").length} detail="в текущем цикле" />
-      <Metric label="Задачи на мне" value={allTasks.length} detail="4 требуют внимания" />
-      <Metric label="Просрочено" value={overdue.length || 1} accent detail="нужна реакция" />
-      <Metric label="Ближайший концерт" value={allEvents.length ? "47 дн." : "—"} detail={allEvents[0]?.city ?? "не назначен"} />
+      <Metric label={t("dashboard.activeProjects")} value={allProjects.filter((project) => project.status === "in_progress").length} />
+      <Metric label={t("dashboard.myTasks")} value={nearestTasks.length} />
+      <Metric label={t("dashboard.overdue")} value={overdue.length} accent />
+      <Metric label={t("dashboard.nextEvent")} value={nearestEvent ? formatDate(nearestEvent.starts_at, false, profile.locale) : "—"} detail={nearestEvent?.city} />
     </section>
 
-    <section className="mt-8 grid gap-7 xl:grid-cols-[1.45fr_.75fr]">
+    <section className="mt-8 grid gap-7 xl:grid-cols-[1.25fr_.85fr]">
       <div>
-        <SectionHeader title="Ближайшие задачи" href="/tasks" />
-        <div className="metal-card space-y-2 p-3">{allTasks.slice(0, 5).map((task) => <TaskCard key={task.id} task={task} compact />)}</div>
+        <SectionHeader title={t("dashboard.nearestTasks")} href="/my" />
+        <div className="metal-card space-y-2 p-3">
+          {nearestTasks.map((task) => <TaskCard key={task.id} task={task} compact />)}
+          {!nearestTasks.length && <p className="p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
+        </div>
+      </div>
+      <RedZone issues={issues} compact />
+    </section>
+
+    <section className="mt-8 grid gap-7 xl:grid-cols-[1.25fr_.85fr]">
+      <div>
+        <SectionHeader title={t("dashboard.events")} href="/events" />
+        <div className="grid gap-3 md:grid-cols-2">
+          {upcomingEvents.map((event) => <EventCard key={event.id} event={event} />)}
+          {!upcomingEvents.length && <p className="metal-card col-span-full p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
+        </div>
       </div>
       <div>
-        <SectionHeader title="Требует решения" />
-        <div className="metal-card p-5">
-          <div className="flex items-start gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ember/10 text-ember"><AlertTriangle size={17} /></div><div><p className="text-sm text-zinc-200">Утвердить мастер</p><p className="mt-1 text-xs leading-5 text-zinc-600">The Last Light · версия v7.2 ожидает финального решения.</p></div></div>
-          <Link href="/songs/s1" className="mt-5 flex items-center justify-between border-t border-white/[.06] pt-4 text-xs text-zinc-500 hover:text-white">Открыть материал <ArrowRight size={14} /></Link>
-        </div>
-        <div className="mt-3 metal-card p-5">
-          <div className="flex items-start gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/5 text-zinc-400"><CalendarClock size={17} /></div><div><p className="text-sm text-zinc-200">Смета съёмки</p><p className="mt-1 text-xs leading-5 text-zinc-600">Согласование просрочено на 2 дня.</p></div></div>
+        <SectionHeader title={t("dashboard.deadlines")} />
+        <div className="metal-card divide-y divide-white/[.055]">
+          {deadlines.map((item) => <Link key={item.id} href={item.href} className="flex items-center justify-between gap-4 p-4 hover:bg-white/[.02]">
+            <span className="truncate text-sm text-zinc-300">{item.title}</span>
+            <span className="shrink-0 text-xs text-zinc-600">{formatDate(item.date, false, profile.locale)}</span>
+          </Link>)}
+          {!deadlines.length && <p className="p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
         </div>
       </div>
     </section>
 
-    <section className="mt-8"><SectionHeader title="Проекты в работе" href="/projects" /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{allProjects.slice(0, 4).map((project) => <ProjectCard key={project.id} project={project} />)}</div></section>
-    <section className="mt-8 grid gap-7 xl:grid-cols-[1.4fr_.8fr]">
-      <div><SectionHeader title="Ближайшие концерты" href="/events" /><div className="grid gap-3 md:grid-cols-2">{allEvents.slice(0, 2).map((event) => <EventCard key={event.id} event={event} />)}</div></div>
-      <div><SectionHeader title="Последние изменения" /><div className="metal-card divide-y divide-white/[.055] px-5">{activity.map((item) => <div key={item.id} className="py-4"><p className="text-xs text-zinc-300"><span className="font-medium text-zinc-100">{item.user}</span> {item.action}</p><p className="mt-1 text-[11px] text-zinc-600">{item.target} · {item.at}</p></div>)}</div></div>
+    <section className="mt-8">
+      <SectionHeader title={t("backup.missingCount")} href="/songs" />
+      <div className="metal-card flex items-center gap-4 p-6">
+        <div className="grid h-11 w-11 place-items-center rounded-lg bg-amber-500/10 text-amber-300"><DatabaseBackup size={20} /></div>
+        <p className="font-display text-3xl text-zinc-100">{missingBackups}</p>
+        <p className="text-sm text-zinc-600">{t("backup.missingCount")}</p>
+      </div>
     </section>
   </>;
 }

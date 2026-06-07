@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleDollarSign, ContactRound,
-  FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, Settings, SlidersHorizontal, UsersRound, X,
+  FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, PackageCheck, Settings,
+  SlidersHorizontal, UserRound, UsersRound, X,
 } from "lucide-react";
 import { useState } from "react";
 import { cn, initials } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { translateLiteral } from "@/lib/i18n";
 
 const navigation = [
   { href: "/dashboard", key: "nav.dashboard" as const, icon: Gauge },
+  { href: "/my", key: "nav.my" as const, icon: UserRound },
   { href: "/projects", key: "nav.projects" as const, icon: FolderKanban },
   { href: "/tasks", key: "nav.tasks" as const, icon: CheckSquare2 },
   { href: "/songs", key: "nav.songs" as const, icon: Music2 },
@@ -23,6 +25,7 @@ const navigation = [
   { href: "/promo", key: "nav.promo" as const, icon: Megaphone },
   { href: "/contacts", key: "nav.contacts" as const, icon: ContactRound },
   { href: "/finance", key: "nav.finance" as const, icon: CircleDollarSign },
+  { href: "/packing-lists", key: "nav.packingLists" as const, icon: PackageCheck },
 ];
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {

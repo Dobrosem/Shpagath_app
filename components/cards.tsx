@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, AudioLines, Building2, CheckCircle2, Circle, MapPin, Music2 } from "lucide-react";
+import { ArrowUpRight, AudioLines, Building2, CheckCircle2, Circle, DatabaseBackup, MapPin, Music2 } from "lucide-react";
 import type { Event, Project, Song, Task } from "@/lib/types";
 import { DateMeta, PriorityBadge, StatusBadge } from "./ui";
 import { formatDate, initials } from "@/lib/utils";
@@ -55,6 +55,7 @@ export function SongCard({ song }: { song: Song }) {
         <div key={key as string}><p className="text-[8px] tracking-widest text-zinc-700">{key}</p><p className="mt-1 truncate text-xs text-zinc-400">{value ?? "—"}</p></div>)}
     </div>
     <p className="mt-4 flex items-center gap-1.5 text-xs text-zinc-600"><AudioLines size={13} />{song.materials_count ?? 0} {t("song.materialCount")} · {song.arrangement_version}</p>
+    {!!song.missing_backups_count && <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400"><DatabaseBackup size={13} />{t("backup.missing")}: {song.missing_backups_count}</p>}
   </Link>;
 }
 
