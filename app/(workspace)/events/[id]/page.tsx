@@ -1,17 +1,24 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, ShieldAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clock3,
+  ExternalLink,
+  MapPin,
+  ShieldAlert,
+} from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { EventEditDialog } from "@/components/event-edit-dialog";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
-import { PageHeader, StatusBadge } from "@/components/ui";
+import { StatusBadge } from "@/components/ui";
 import { getProfile, getRedZoneIssues } from "@/lib/data";
-import { translator } from "@/lib/i18n";
+import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
 import type { Event, Task } from "@/lib/types";
-import { formatDate, getEventPosterUrl } from "@/lib/utils";
+import { getEventPosterUrl } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -53,81 +60,155 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   const posterUrl = getEventPosterUrl(event);
   const eventTasks = (tasksResult.data as Task[]) ?? [];
   const setlistItems = setlistResult.data?.items ?? [];
+  const locale = profile.locale === "en" ? "en-US" : "ru-RU";
+  const startsAt = new Date(event.starts_at);
+  const eventDate = new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(startsAt);
+  const eventTime = new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(startsAt);
   const technicalLinks = [
     [profile.locale === "en" ? "Technical rider" : "Технический райдер", event.tech_rider_url],
     ["Stage plot", event.stage_plot_url],
     [profile.locale === "en" ? "Lighting timing" : "Световой тайминг", event.light_timing_url],
     [profile.locale === "en" ? "Video / intro" : "Видео / интро", event.video_timing_url],
   ].filter((item): item is [string, string] => Boolean(item[1]));
-  const eventOverview = [
-    [profile.locale === "en" ? "Date" : "Дата", formatDate(event.starts_at, true, profile.locale)],
+  const summaryItems = [
+    [profile.locale === "en" ? "Date" : "Дата", eventDate],
+    [profile.locale === "en" ? "Time" : "Время", eventTime],
     [profile.locale === "en" ? "City" : "Город", event.city],
     [profile.locale === "en" ? "Venue" : "Площадка", event.venue],
     [t("eventTiming.venueAddress"), event.venue_address],
+    [profile.locale === "en" ? "Status" : "Статус", translateEnum(profile.locale, event.status, event.status, "event")],
+  ] as const;
+  const timingItems = [
     [t("eventTiming.arrival"), event.arrival_time],
+    [t("eventTiming.loadIn"), event.load_in_time],
     [t("eventTiming.soundcheck"), event.soundcheck_time],
     [t("eventTiming.doors"), event.doors_time],
     [t("eventTiming.showStart"), event.show_start_time],
+    [t("eventTiming.showEnd"), event.show_end_time],
+    [t("eventTiming.curfew"), event.curfew_time],
+    [t("eventTiming.backstageInfo"), event.backstage_info],
+    [t("eventTiming.organizerContact"), event.organizer_contact],
+    [t("eventTiming.soundEngineerContact"), event.sound_engineer_contact],
+    [t("eventTiming.lightEngineerContact"), event.light_engineer_contact],
+    [t("eventTiming.emergencyNotes"), event.emergency_notes],
   ] as const;
+  const publicLinks = [
+    [profile.locale === "en" ? "Tickets" : "Билеты", event.ticket_url],
+    [profile.locale === "en" ? "VK event" : "Событие VK", event.vk_event_url],
+  ].filter((item): item is [string, string] => Boolean(item[1]));
 
   return <>
     <Link href="/events" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
       <ArrowLeft size={14} />{t("event.back")}
     </Link>
-    <PageHeader
-      eyebrow={profile.locale === "en" ? "Event" : "Концерт"}
-      title={event.title}
-      description={`${event.city} · ${event.venue ?? (profile.locale === "en" ? "Venue to be confirmed" : "Площадка уточняется")}`}
-      action={<div className="flex flex-wrap items-start justify-end gap-2">
-        <EventEditDialog event={event} setlistNotes={setlistResult.data?.notes} />
-        <TemplateTaskButton eventId={id} />
-        <Link href={`/events/${id}/battle-sheet`} className="button-primary">
-          <ShieldAlert size={15} />{t("event.battleSheet")}
-        </Link>
-      </div>}
-    />
-    <div className="mb-7"><RedZone issues={issues} compact /></div>
-    <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
-      <div className="space-y-5">
-        <div className="metal-card overflow-hidden">
-          {posterUrl
-            ? <img src={posterUrl} alt={event.title} className="aspect-[4/3] w-full object-cover" />
-            : <div className="grid min-h-44 place-items-center p-6 text-center text-sm text-zinc-600">{t("poster.empty")}</div>}
-          <div className="border-t border-white/[.06] px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-display text-lg uppercase text-white">{t("poster.title")}</span>
-              <StatusBadge status={event.poster_status ?? "draft"} />
-            </div>
-            {event.poster_notes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-500">{event.poster_notes}</p>}
-          </div>
+
+    <section className="metal-card relative mb-5 min-h-[320px] overflow-hidden sm:min-h-[380px]">
+      {posterUrl
+        ? <img src={posterUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover" />
+        : <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,.11),transparent_42%),linear-gradient(135deg,#18181b,#050505_70%)]" />}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/20" />
+      <div className="relative flex min-h-[320px] flex-col justify-between p-4 sm:min-h-[380px] sm:p-7">
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <EventEditDialog
+            event={event}
+            setlistNotes={setlistResult.data?.notes}
+            triggerClassName="button-secondary min-h-10 border-white/15 bg-black/45 px-3 text-white backdrop-blur-md hover:bg-black/65"
+          />
+          <EventEditDialog
+            event={event}
+            setlistNotes={setlistResult.data?.notes}
+            trigger="poster"
+            triggerClassName="button-secondary min-h-10 border-white/15 bg-black/45 px-3 text-white backdrop-blur-md hover:bg-black/65"
+          />
         </div>
-        <div className="metal-card p-6">
-          <div className="flex items-center justify-between">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} context="event" />
-            <span className="text-xs uppercase tracking-wider text-zinc-600">{t("eventTiming.title")}</span>
+            <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-300 backdrop-blur">
+              {t("poster.title")}: {translateEnum(profile.locale, event.poster_status ?? "draft")}
+            </span>
           </div>
-          <div className="mt-6 grid grid-cols-2 gap-2">
-            {eventOverview.map(([label, value]) => (
-              <div key={label} className="min-h-20 rounded-lg bg-white/[.025] p-3">
-                <p className="text-[9px] uppercase text-zinc-700">{label}</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-200">{value || "—"}</p>
-              </div>
-            ))}
+          <h1 className="font-display text-4xl uppercase leading-none text-white sm:text-6xl">{event.title}</h1>
+          <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-zinc-200">
+            <span className="inline-flex items-center gap-2"><CalendarDays size={15} />{eventDate}</span>
+            <span className="inline-flex items-center gap-2"><Clock3 size={15} />{eventTime}</span>
+            <span className="inline-flex items-center gap-2"><MapPin size={15} />{[event.city, event.venue].filter(Boolean).join(" · ")}</span>
           </div>
-        </div>
-        <div className="metal-card p-6">
-          <h2 className="font-display text-lg uppercase text-white">{t("event.technicalLinks")}</h2>
-          {technicalLinks.map(([label, url]) => <a href={url} target="_blank" rel="noreferrer" key={label} className="flex items-center justify-between border-b border-white/[.06] py-3 text-xs text-zinc-400 last:border-0 hover:text-white">{label}<ExternalLink size={13} /></a>)}
-          {!technicalLinks.length && <p className="py-6 text-sm text-zinc-600">{t("common.noData")}</p>}
+          {event.poster_notes && <p className="mt-3 max-w-2xl text-xs leading-5 text-zinc-400">{event.poster_notes}</p>}
         </div>
       </div>
+    </section>
+
+    <div className="mb-5 flex flex-wrap gap-2">
+      <TemplateTaskButton eventId={id} />
+      <Link href={`/events/${id}/battle-sheet`} className="button-primary">
+        <ShieldAlert size={15} />{t("event.battleSheet")}
+      </Link>
+    </div>
+    <div className="mb-6"><RedZone issues={issues} compact /></div>
+
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+      <div className="space-y-5">
+        <section className="metal-card p-5 sm:p-6">
+          <div>
+            <p className="eyebrow">{t("common.summary")}</p>
+            <h2 className="font-display text-xl uppercase text-white">{t("event.mainInformation")}</h2>
+          </div>
+          <dl className="mt-5 divide-y divide-white/[.06]">
+            {summaryItems.map(([label, value]) => (
+              <div key={label} className="grid gap-1 py-2.5 sm:grid-cols-[130px_1fr] sm:gap-4">
+                <dt className="text-[10px] uppercase tracking-wider text-zinc-700">{label}</dt>
+                <dd className="text-sm text-zinc-300">{value || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+          {publicLinks.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/[.06] pt-4">
+            {publicLinks.map(([label, url]) => (
+              <a href={url} target="_blank" rel="noreferrer" key={label} className="button-secondary min-h-10 px-3">
+                {label}<ExternalLink size={13} />
+              </a>
+            ))}
+          </div>}
+          {event.description && <p className="mt-5 whitespace-pre-wrap border-t border-white/[.06] pt-4 text-sm leading-6 text-zinc-500">{event.description}</p>}
+        </section>
+
+        <section className="metal-card p-5 sm:p-6">
+          <h2 className="font-display text-xl uppercase text-white">{t("eventTiming.title")}</h2>
+          <dl className="mt-4 grid gap-x-6 sm:grid-cols-2">
+            {timingItems.map(([label, value]) => (
+              <div key={label} className="border-b border-white/[.06] py-2.5">
+                <dt className="text-[10px] uppercase tracking-wider text-zinc-700">{label}</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm text-zinc-300">{value || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="metal-card p-5 sm:p-6">
+          <h2 className="font-display text-lg uppercase text-white">{t("event.technicalLinks")}</h2>
+          {technicalLinks.map(([label, url]) => (
+            <a href={url} target="_blank" rel="noreferrer" key={label} className="flex min-h-11 items-center justify-between border-b border-white/[.06] py-3 text-xs text-zinc-400 last:border-0 hover:text-white">
+              {label}<ExternalLink size={13} />
+            </a>
+          ))}
+          {!technicalLinks.length && <p className="py-5 text-sm text-zinc-600">{t("common.noData")}</p>}
+        </section>
+      </div>
+
       <div>
         <h2 className="mb-3 font-display text-lg uppercase text-white">{t("event.preparation")}</h2>
         <div className="grid gap-3 md:grid-cols-2">
           {eventTasks.map((task) => <TaskCard key={task.id} task={task} />)}
           {!eventTasks.length && <p className="metal-card col-span-full p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
         </div>
-        <div className="mt-5 metal-card p-6">
+        <div className="mt-5 metal-card p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-lg uppercase text-white">{t("setlistBuilder.title")}</h2>
             <Link href={`/events/${id}/setlist`} className="button-secondary">

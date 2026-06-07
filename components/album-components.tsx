@@ -27,7 +27,7 @@ const albumTypes = ["album", "ep", "single", "live", "demo", "compilation"];
 const albumStatuses = ["draft", "in_progress", "review", "approved", "released", "archived"];
 const coverStatuses = ["draft", "review", "approved", "outdated", "archived"];
 
-function AlbumFields({ album }: { album?: Album }) {
+function AlbumFields({ album, includeCover = true }: { album?: Album; includeCover?: boolean }) {
   const { locale } = useI18n();
   const label = (ru: string, en: string) => locale === "en" ? en : ru;
   return <>
@@ -44,9 +44,11 @@ function AlbumFields({ album }: { album?: Album }) {
     </label>
     <label><span className="label">{label("Дата релиза", "Release date")}</span><input className="field" type="date" name="release_date" defaultValue={album?.release_date ?? ""} /></label>
     <label className="sm:col-span-2"><span className="label">{label("Описание", "Description")}</span><textarea className="field min-h-28 py-3" name="description" defaultValue={album?.description ?? ""} /></label>
-    <label className="sm:col-span-2"><span className="label">{label("Ссылка на обложку", "Cover URL")}</span><input className="field" type="url" name="cover_image_url" defaultValue={album?.cover_image_url ?? ""} /></label>
-    <label><span className="label">{label("Статус обложки", "Cover status")}</span><select className="field" name="cover_status" defaultValue={album?.cover_status ?? "draft"}>{coverStatuses.map((status) => <option key={status} value={status}>{translateEnum(locale, status)}</option>)}</select></label>
-    <label className="sm:col-span-2"><span className="label">{label("Заметки к обложке", "Cover notes")}</span><textarea className="field min-h-20 py-3" name="cover_notes" defaultValue={album?.cover_notes ?? ""} /></label>
+    {includeCover && <>
+      <label className="sm:col-span-2"><span className="label">{label("Ссылка на обложку", "Cover URL")}</span><input className="field" type="url" name="cover_image_url" defaultValue={album?.cover_image_url ?? ""} /></label>
+      <label><span className="label">{label("Статус обложки", "Cover status")}</span><select className="field" name="cover_status" defaultValue={album?.cover_status ?? "draft"}>{coverStatuses.map((status) => <option key={status} value={status}>{translateEnum(locale, status)}</option>)}</select></label>
+      <label className="sm:col-span-2"><span className="label">{label("Заметки к обложке", "Cover notes")}</span><textarea className="field min-h-20 py-3" name="cover_notes" defaultValue={album?.cover_notes ?? ""} /></label>
+    </>}
   </>;
 }
 
@@ -84,7 +86,15 @@ export function AlbumCreateDialog() {
   </>;
 }
 
-export function AlbumEditDialog({ album }: { album: Album }) {
+export function AlbumEditDialog({
+  album,
+  canDelete = false,
+  triggerClassName = "button-secondary",
+}: {
+  album: Album;
+  canDelete?: boolean;
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { locale, t } = useI18n();
@@ -96,7 +106,7 @@ export function AlbumEditDialog({ album }: { album: Album }) {
   }, [router, state.success]);
 
   return <>
-    <button type="button" className="button-secondary" onClick={() => setOpen(true)}><Pencil size={14} />{t("albums.edit")}</button>
+    <button type="button" className={triggerClassName} onClick={() => setOpen(true)}><Pencil size={14} />{t("albums.edit")}</button>
     {open && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
       <div className="metal-card max-h-[92vh] w-full max-w-2xl overflow-y-auto p-6" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
@@ -105,13 +115,20 @@ export function AlbumEditDialog({ album }: { album: Album }) {
         </div>
         <form action={action} className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="locale" value={locale} />
-          <AlbumFields album={album} />
+          <input type="hidden" name="cover_image_url" value={album.cover_image_url ?? ""} />
+          <input type="hidden" name="cover_status" value={album.cover_status} />
+          <input type="hidden" name="cover_notes" value={album.cover_notes ?? ""} />
+          <AlbumFields album={album} includeCover={false} />
           {state.error && <p className="flex gap-2 text-xs text-red-300 sm:col-span-2"><AlertCircle size={14} />{state.error}</p>}
           <div className="flex justify-end gap-2 sm:col-span-2">
             <button type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
             <button className="button-primary" disabled={pending}>{pending && <Loader2 size={14} className="animate-spin" />}{t("common.save")}</button>
           </div>
         </form>
+        <AlbumCoverEditor album={album} embedded />
+        {canDelete && <div className="mt-6 border-t border-white/[.08] pt-5">
+          <AlbumDeleteButton album={album} />
+        </div>}
       </div>
     </div>}
   </>;
@@ -138,7 +155,7 @@ export function AlbumCard({ album }: { album: Album }) {
   </Link>;
 }
 
-export function AlbumCoverEditor({ album }: { album: Album }) {
+export function AlbumCoverEditor({ album, embedded = false }: { album: Album; embedded?: boolean }) {
   const router = useRouter();
   const { locale, t } = useI18n();
   const [state, action, pending] = useActionState(updateAlbumCover.bind(null, album.id), initialState);
@@ -146,6 +163,36 @@ export function AlbumCoverEditor({ album }: { album: Album }) {
   useEffect(() => {
     if (state.success) router.refresh();
   }, [router, state.success]);
+
+  if (embedded) return <section className="mt-7 border-t border-white/[.08] pt-6">
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <div>
+        <p className="eyebrow">{t("albums.cover")}</p>
+        <h3 className="font-display text-xl uppercase text-white">{t("albums.editCover")}</h3>
+      </div>
+      <StatusBadge status={album.cover_status} />
+    </div>
+    <div className="grid gap-4 sm:grid-cols-[112px_1fr]">
+      <div className="aspect-square overflow-hidden rounded-xl border border-white/[.08] bg-black/30">
+        {coverUrl
+          ? <img src={coverUrl} alt={album.title} className="h-full w-full object-cover" />
+          : <div className="grid h-full place-items-center"><ImageIcon className="text-zinc-700" size={30} /></div>}
+      </div>
+      <form action={action} className="grid gap-4">
+        <input type="hidden" name="locale" value={locale} />
+        <label><span className="label">{coverUrl ? t("albums.replaceCover") : t("albums.uploadCover")}</span><input className="field py-2" type="file" name="cover_file" accept="image/*" /></label>
+        <label><span className="label">URL</span><input className="field" type="url" name="cover_image_url" defaultValue={album.cover_image_url ?? ""} /></label>
+        <label><span className="label">{t("albums.coverStatus")}</span><select className="field" name="cover_status" defaultValue={album.cover_status}>{coverStatuses.map((status) => <option key={status} value={status}>{translateEnum(locale, status)}</option>)}</select></label>
+        <label><span className="label">{t("albums.coverNotes")}</span><textarea className="field min-h-20 py-3" name="cover_notes" defaultValue={album.cover_notes ?? ""} /></label>
+        {state.error && <p className="flex gap-2 text-xs text-red-300"><AlertCircle size={14} />{state.error}</p>}
+        {state.success && <p className="flex gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />{t("albums.saved")}</p>}
+        <div className="flex flex-wrap justify-between gap-2">
+          {album.cover_image_url && <button className="button-secondary border-red-500/20 text-red-300" name="remove_cover" value="true" disabled={pending}><Trash2 size={14} />{t("albums.removeCover")}</button>}
+          <button className="button-primary ml-auto" disabled={pending}>{pending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{coverUrl ? t("albums.replaceCover") : t("albums.uploadCover")}</button>
+        </div>
+      </form>
+    </div>
+  </section>;
 
   return <div className="grid gap-5 lg:grid-cols-[minmax(260px,.8fr)_1.2fr]">
     <div className="metal-card overflow-hidden">
