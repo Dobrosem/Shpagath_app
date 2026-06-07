@@ -67,8 +67,20 @@ export interface Event {
   status: Status;
   project_id?: string | null;
   call_time?: string | null;
+  arrival_time?: string | null;
+  load_in_time?: string | null;
   soundcheck_time?: string | null;
   performance_time?: string | null;
+  doors_time?: string | null;
+  show_start_time?: string | null;
+  show_end_time?: string | null;
+  curfew_time?: string | null;
+  backstage_info?: string | null;
+  venue_address?: string | null;
+  organizer_contact?: string | null;
+  sound_engineer_contact?: string | null;
+  light_engineer_contact?: string | null;
+  emergency_notes?: string | null;
   ticket_url?: string | null;
   tech_rider_url?: string | null;
   stage_plot_url?: string | null;
@@ -80,6 +92,24 @@ export interface Event {
   contact_person?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;
+}
+
+export interface EventSetlistItem {
+  id: string;
+  setlist_id: string;
+  song_id: string;
+  order_index: number;
+  live_version?: string | null;
+  notes?: string | null;
+  song?: Pick<Song, "id" | "title" | "bpm" | "key" | "tuning"> | null;
+}
+
+export interface EventSetlist {
+  id: string;
+  event_id: string;
+  title: string;
+  notes?: string | null;
+  items?: EventSetlistItem[];
 }
 
 export interface Material {

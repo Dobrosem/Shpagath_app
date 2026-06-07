@@ -112,6 +112,21 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
     [profile.locale === "en" ? "Tickets" : "Билеты", event.ticket_url],
     [profile.locale === "en" ? "VK event" : "Событие VK", event.vk_event_url],
   ] as const;
+  const timingRows = [
+    [t("eventTiming.venueAddress"), event.venue_address],
+    [t("eventTiming.arrival"), event.arrival_time],
+    [t("eventTiming.loadIn"), event.load_in_time],
+    [t("eventTiming.soundcheck"), event.soundcheck_time],
+    [t("eventTiming.doors"), event.doors_time],
+    [t("eventTiming.showStart"), event.show_start_time],
+    [t("eventTiming.showEnd"), event.show_end_time],
+    [t("eventTiming.curfew"), event.curfew_time],
+    [t("eventTiming.backstageInfo"), event.backstage_info],
+    [t("eventTiming.organizerContact"), event.organizer_contact],
+    [t("eventTiming.soundEngineerContact"), event.sound_engineer_contact],
+    [t("eventTiming.lightEngineerContact"), event.light_engineer_contact],
+    [t("eventTiming.emergencyNotes"), event.emergency_notes],
+  ] as const;
 
   return <div className="mx-auto max-w-6xl">
     <Link href={`/events/${id}`} className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
@@ -165,15 +180,11 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="metal-card p-6">
-        <h2 className="font-display text-xl uppercase text-white">{profile.locale === "en" ? "Schedule" : "Тайминг"}</h2>
-        <div className="mt-5 grid gap-3">
-          {[
-            [t("event.callTime"), event.call_time],
-            [t("event.soundcheck"), event.soundcheck_time],
-            [t("event.performance"), event.performance_time],
-          ].map(([label, value]) => <div className="flex items-center justify-between rounded-lg bg-white/[.025] p-4" key={label}>
-            <span className="text-xs uppercase tracking-wider text-zinc-600">{label}</span>
-            <span className="font-display text-xl text-white">{value || t("battleSheet.timeNotSpecified")}</span>
+        <h2 className="font-display text-xl uppercase text-white">{t("eventTiming.title")}</h2>
+        <div className="mt-5 divide-y divide-white/[.06]">
+          {timingRows.map(([label, value]) => <div className="py-3 first:pt-0 last:pb-0" key={label}>
+            <p className="text-[9px] uppercase tracking-widest text-zinc-700">{label}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-300">{value || unspecified}</p>
           </div>)}
         </div>
       </div>
@@ -181,8 +192,7 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
 
     <section className="mt-5 metal-card p-6">
       <h2 className="font-display text-xl uppercase text-white">{t("battleSheet.setlist")}</h2>
-      {setlist?.title && <p className="mt-2 text-xs text-zinc-600">{setlist.title}</p>}
-      {!!setlistItems.length && <ol className="mt-4 divide-y divide-white/[.06]">
+      {!!setlistItems.length ? <ol className="mt-4 divide-y divide-white/[.06]">
         {setlistItems.map((item) => <li className="flex gap-4 py-4" key={item.id}>
           <span className="w-7 shrink-0 text-xs text-ember">{String(item.order_index + 1).padStart(2, "0")}</span>
           <div className="min-w-0 flex-1">
@@ -192,9 +202,10 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
             </p>}
           </div>
         </li>)}
-      </ol>}
-      {!setlistItems.length && <p className="mt-5 text-sm text-zinc-600">{t("battleSheet.setlistEmpty")}</p>}
-      {setlist?.notes && <p className="mt-5 border-t border-white/[.06] pt-5 whitespace-pre-wrap text-sm leading-6 text-zinc-500">{setlist.notes}</p>}
+      </ol> : setlist?.notes ? <div className="mt-5">
+        <p className="text-[9px] uppercase tracking-widest text-zinc-700">{t("eventTiming.textSetlist")}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-400">{setlist.notes}</p>
+      </div> : <p className="mt-5 text-sm text-zinc-600">{t("battleSheet.setlistEmpty")}</p>}
     </section>
 
     {!!materials.length && <section className="mt-5 metal-card p-6">

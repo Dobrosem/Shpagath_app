@@ -1,0 +1,51 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { notFound } from "next/navigation";
+import { SetlistBuilder } from "@/components/setlist-builder";
+import { PageHeader } from "@/components/ui";
+import { getEventSetlist, getProfile, getSongs } from "@/lib/data";
+import { translator } from "@/lib/i18n";
+import { createClient } from "@/lib/supabase/server";
+
+export default async function EventSetlistPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const [supabase, profile, songs, setlist] = await Promise.all([
+    createClient(),
+    getProfile(),
+    getSongs(),
+    getEventSetlist(id),
+  ]);
+  if (!supabase) notFound();
+
+  const { data: event, error } = await supabase
+    .from("events")
+    .select("id,title")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !event) notFound();
+
+  const t = translator(profile.locale);
+  const sortedSongs = [...songs].sort((a, b) =>
+    a.title.localeCompare(b.title, profile.locale),
+  );
+
+  return <>
+    <Link href={`/events/${id}`} className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
+      <ArrowLeft size={14} />{t("battleSheet.backToEvent")}
+    </Link>
+    <PageHeader
+      eyebrow={profile.locale === "en" ? "Setlist builder" : "Конструктор сетлиста"}
+      title={t("setlistBuilder.title")}
+      description={event.title}
+    />
+    <SetlistBuilder
+      eventId={id}
+      songs={sortedSongs}
+      initialItems={setlist?.items ?? []}
+    />
+  </>;
+}

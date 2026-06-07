@@ -56,6 +56,19 @@ export function EventEditDialog({
     ["contact_phone", label("Телефон", "Contact phone"), "text"],
     ["contact_email", "Email", "email"],
   ] as const;
+  const timingFields = [
+    ["venue_address", t("eventTiming.venueAddress")],
+    ["arrival_time", t("eventTiming.arrival")],
+    ["load_in_time", t("eventTiming.loadIn")],
+    ["soundcheck_time", t("eventTiming.soundcheck")],
+    ["doors_time", t("eventTiming.doors")],
+    ["show_start_time", t("eventTiming.showStart")],
+    ["show_end_time", t("eventTiming.showEnd")],
+    ["curfew_time", t("eventTiming.curfew")],
+    ["organizer_contact", t("eventTiming.organizerContact")],
+    ["sound_engineer_contact", t("eventTiming.soundEngineerContact")],
+    ["light_engineer_contact", t("eventTiming.lightEngineerContact")],
+  ] as const;
 
   return <>
     <button type="button" className="button-secondary" onClick={() => setOpen(true)}>
@@ -83,8 +96,14 @@ export function EventEditDialog({
           <label><span className="label">{label("Дата", "Date")}</span><input className="field" type="date" name="date" required value={dateParts.date} onChange={(event) => setDateParts((current) => ({ ...current, date: event.target.value }))} /></label>
           <label><span className="label">{label("Время", "Time")}</span><input className="field" type="time" name="time" required value={dateParts.time} onChange={(event) => setDateParts((current) => ({ ...current, time: event.target.value }))} /></label>
           {fields.map(([name, fieldLabel, type]) => <label key={name}><span className="label">{fieldLabel}</span><input className="field" name={name} type={type} defaultValue={String(event[name] ?? "")} /></label>)}
+          <div className="border-t border-white/[.08] pt-5 sm:col-span-2">
+            <p className="font-display text-lg uppercase text-white">{t("eventTiming.title")}</p>
+          </div>
+          {timingFields.map(([name, fieldLabel]) => <label key={name}><span className="label">{fieldLabel}</span><input className="field" name={name} defaultValue={event[name] ?? ""} /></label>)}
+          <label className="sm:col-span-2"><span className="label">{t("eventTiming.backstageInfo")}</span><textarea className="field min-h-20 py-3" name="backstage_info" defaultValue={event.backstage_info ?? ""} /></label>
+          <label className="sm:col-span-2"><span className="label">{t("eventTiming.emergencyNotes")}</span><textarea className="field min-h-20 py-3" name="emergency_notes" defaultValue={event.emergency_notes ?? ""} /></label>
           <label className="sm:col-span-2"><span className="label">{label("Описание", "Description")}</span><textarea className="field min-h-24 py-3" name="description" defaultValue={event.description ?? ""} /></label>
-          <label className="sm:col-span-2"><span className="label">{t("event.setlist")}</span><textarea className="field min-h-20 py-3" name="setlist_notes" defaultValue={setlistNotes ?? ""} placeholder={label("Заметки к сетлисту", "Setlist notes")} /></label>
+          <label className="sm:col-span-2"><span className="label">{t("eventTiming.textSetlist")}</span><textarea className="field min-h-20 py-3" name="setlist_notes" defaultValue={setlistNotes ?? ""} placeholder={t("eventTiming.textSetlist")} /></label>
           <label className="sm:col-span-2"><span className="label">{label("Технические заметки", "Technical notes")}</span><textarea className="field min-h-24 py-3" name="tech_notes" defaultValue={event.tech_notes ?? ""} /></label>
           {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 sm:col-span-2"><AlertCircle size={15} className="shrink-0" />{state.error}</div>}
           <div className="mt-2 flex justify-end gap-2 sm:col-span-2">

@@ -4,6 +4,7 @@ import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
 import type {
   Contact,
   Event,
+  EventSetlist,
   FinanceRecord,
   Material,
   MaterialBackup,
@@ -119,6 +120,20 @@ export async function getEvents(): Promise<Event[]> {
   const { data, error } = await supabase.from("events").select("*").order("starts_at");
   reportReadError("events", error);
   return (data as Event[]) ?? [];
+}
+
+export async function getEventSetlist(eventId: string): Promise<EventSetlist | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("setlists")
+    .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
+    .eq("event_id", eventId)
+    .order("order_index", { referencedTable: "setlist_items" })
+    .limit(1)
+    .maybeSingle();
+  reportReadError("event setlist", error);
+  return (data as EventSetlist | null) ?? null;
 }
 
 export async function getRehearsals(): Promise<Rehearsal[]> {

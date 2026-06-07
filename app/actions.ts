@@ -261,6 +261,19 @@ export async function updateEvent(
     "contact_person",
     "contact_phone",
     "contact_email",
+    "arrival_time",
+    "load_in_time",
+    "soundcheck_time",
+    "doors_time",
+    "show_start_time",
+    "show_end_time",
+    "curfew_time",
+    "backstage_info",
+    "venue_address",
+    "organizer_contact",
+    "sound_engineer_contact",
+    "light_engineer_contact",
+    "emergency_notes",
   ] as const;
   const urlFields = [
     "ticket_url",
@@ -340,8 +353,203 @@ export async function updateEvent(
 
   revalidatePath("/events");
   revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/battle-sheet`);
+  revalidatePath(`/events/${eventId}/setlist`);
   revalidatePath("/dashboard");
   return { success: true, error: null, id: eventId };
+}
+
+export async function saveEventSetlist(
+  eventId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase) {
+    return { success: false, error: session.error };
+  }
+
+  const locale = formData.get("locale") === "en" ? "en" : "ru";
+  const rawItems = String(formData.get("items") ?? "[]");
+  let parsedItems: unknown;
+  try {
+    parsedItems = JSON.parse(rawItems);
+  } catch {
+    return {
+      success: false,
+      error: locale === "en"
+        ? "The setlist data is invalid. Reload the page and try again."
+        : "Данные сетлиста повреждены. Обновите страницу и попробуйте снова.",
+    };
+  }
+
+  if (!Array.isArray(parsedItems) || parsedItems.length > 500) {
+    return {
+      success: false,
+      error: locale === "en"
+        ? "The setlist data is invalid."
+        : "Некорректные данные сетлиста.",
+    };
+  }
+
+  const items = parsedItems.map((item) => {
+    const value = item && typeof item === "object"
+      ? item as Record<string, unknown>
+      : {};
+    return {
+      song_id: typeof value.song_id === "string" ? value.song_id.trim() : "",
+      live_version: typeof value.live_version === "string"
+        ? value.live_version.trim().slice(0, 500)
+        : "",
+      notes: typeof value.notes === "string" ? value.notes.trim().slice(0, 4000) : "",
+    };
+  });
+  const songIds = items.map((item) => item.song_id);
+  if (songIds.some((id) => !id) || new Set(songIds).size !== songIds.length) {
+    return {
+      success: false,
+      error: locale === "en"
+        ? "Each song can appear in the setlist only once."
+        : "Каждая песня может быть добавлена в сетлист только один раз.",
+    };
+  }
+
+  const eventResult = await session.supabase
+    .from("events")
+    .select("id,title")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (eventResult.error || !eventResult.data) {
+    console.error("Supabase read setlist event error:", eventResult.error);
+    return {
+      success: false,
+      error: locale === "en" ? "Event not found or access denied." : "Концерт не найден или нет доступа.",
+    };
+  }
+
+  if (songIds.length) {
+    const songsResult = await session.supabase
+      .from("songs")
+      .select("id")
+      .in("id", songIds);
+    if (songsResult.error || songsResult.data.length !== songIds.length) {
+      console.error("Supabase validate setlist songs error:", songsResult.error);
+      return {
+        success: false,
+        error: locale === "en"
+          ? "One or more selected songs are unavailable."
+          : "Одна или несколько выбранных песен недоступны.",
+      };
+    }
+  }
+
+  const setlistResult = await session.supabase
+    .from("setlists")
+    .select("id")
+    .eq("event_id", eventId)
+    .limit(1)
+    .maybeSingle();
+  if (setlistResult.error) {
+    console.error("Supabase read setlist error:", setlistResult.error);
+    return { success: false, error: readableError(setlistResult.error.message) };
+  }
+
+  let setlistId = setlistResult.data?.id;
+  if (!setlistId && items.length) {
+    const createResult = await session.supabase
+      .from("setlists")
+      .insert({ event_id: eventId, title: `${eventResult.data.title} setlist` })
+      .select("id")
+      .single();
+    if (createResult.error || !createResult.data) {
+      console.error("Supabase create setlist error:", createResult.error);
+      return {
+        success: false,
+        error: locale === "en"
+          ? "Could not create the event setlist."
+          : "Не удалось создать сетлист концерта.",
+      };
+    }
+    setlistId = createResult.data.id;
+  }
+
+  if (setlistId) {
+    const existingResult = await session.supabase
+      .from("setlist_items")
+      .select("id,song_id,order_index")
+      .eq("setlist_id", setlistId)
+      .order("order_index");
+    if (existingResult.error) {
+      console.error("Supabase read setlist items error:", existingResult.error);
+      return { success: false, error: readableError(existingResult.error.message) };
+    }
+
+    const desiredIds = new Set(songIds);
+    const existingBySong = new Map(
+      (existingResult.data ?? []).map((item) => [item.song_id, item]),
+    );
+    const removedIds = (existingResult.data ?? [])
+      .filter((item) => !desiredIds.has(item.song_id))
+      .map((item) => item.id);
+    if (removedIds.length) {
+      const removeResult = await session.supabase
+        .from("setlist_items")
+        .delete()
+        .in("id", removedIds);
+      if (removeResult.error) {
+        console.error("Supabase remove setlist items error:", removeResult.error);
+        return { success: false, error: readableError(removeResult.error.message) };
+      }
+    }
+
+    const keptItems = (existingResult.data ?? []).filter((item) => desiredIds.has(item.song_id));
+    const temporaryStart = Math.max(
+      1000,
+      ...keptItems.map((item) => item.order_index + 1000),
+    );
+    for (const [index, item] of keptItems.entries()) {
+      const temporaryResult = await session.supabase
+        .from("setlist_items")
+        .update({ order_index: temporaryStart + index })
+        .eq("id", item.id);
+      if (temporaryResult.error) {
+        console.error("Supabase prepare setlist order error:", temporaryResult.error);
+        return { success: false, error: readableError(temporaryResult.error.message) };
+      }
+    }
+
+    for (const [index, item] of items.entries()) {
+      const payload = {
+        order_index: index,
+        live_version: item.live_version || null,
+        notes: item.notes || null,
+      };
+      const existing = existingBySong.get(item.song_id);
+      const result = existing
+        ? await session.supabase.from("setlist_items").update(payload).eq("id", existing.id)
+        : await session.supabase.from("setlist_items").insert({
+            ...payload,
+            setlist_id: setlistId,
+            song_id: item.song_id,
+          });
+      if (result.error) {
+        console.error("Supabase save setlist item error:", result.error);
+        return {
+          success: false,
+          error: locale === "en"
+            ? "Could not save the setlist. Check your access and try again."
+            : "Не удалось сохранить сетлист. Проверьте доступ и попробуйте снова.",
+        };
+      }
+    }
+  }
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/battle-sheet`);
+  revalidatePath(`/events/${eventId}/setlist`);
+  revalidatePath("/dashboard");
+  return { success: true, error: null, id: setlistId, count: items.length };
 }
 
 export async function deleteEntity(

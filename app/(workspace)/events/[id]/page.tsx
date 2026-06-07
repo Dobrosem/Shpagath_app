@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, MapPin, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldAlert } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { EventEditDialog } from "@/components/event-edit-dialog";
@@ -31,7 +31,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       .order("due_date"),
     supabase
       .from("setlists")
-      .select("*, items:setlist_items(*, song:songs(id,title))")
+      .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
       .eq("event_id", id)
       .order("order_index", { referencedTable: "setlist_items" })
       .limit(1)
@@ -50,6 +50,16 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     [profile.locale === "en" ? "Lighting timing" : "Световой тайминг", event.light_timing_url],
     [profile.locale === "en" ? "Video / intro" : "Видео / интро", event.video_timing_url],
   ].filter((item): item is [string, string] => Boolean(item[1]));
+  const eventOverview = [
+    [profile.locale === "en" ? "Date" : "Дата", formatDate(event.starts_at, true, profile.locale)],
+    [profile.locale === "en" ? "City" : "Город", event.city],
+    [profile.locale === "en" ? "Venue" : "Площадка", event.venue],
+    [t("eventTiming.venueAddress"), event.venue_address],
+    [t("eventTiming.arrival"), event.arrival_time],
+    [t("eventTiming.soundcheck"), event.soundcheck_time],
+    [t("eventTiming.doors"), event.doors_time],
+    [t("eventTiming.showStart"), event.show_start_time],
+  ] as const;
 
   return <>
     <Link href="/events" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
@@ -73,14 +83,13 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         <div className="metal-card p-6">
           <div className="flex items-center justify-between">
             <StatusBadge status={event.status} context="event" />
-            <span className="text-sm text-zinc-400">{formatDate(event.starts_at, true, profile.locale)}</span>
+            <span className="text-xs uppercase tracking-wider text-zinc-600">{t("eventTiming.title")}</span>
           </div>
-          <p className="mt-8 flex items-center gap-2 text-sm text-zinc-300"><MapPin size={15} className="text-zinc-600" />{event.city}, {event.venue ?? "—"}</p>
-          <div className="mt-6 grid grid-cols-3 gap-2">
-            {[[t("event.callTime"), event.call_time], [t("event.soundcheck"), event.soundcheck_time], [t("event.performance"), event.performance_time]].map(([label, value]) => (
-              <div key={label} className="rounded-lg bg-white/[.025] p-3">
+          <div className="mt-6 grid grid-cols-2 gap-2">
+            {eventOverview.map(([label, value]) => (
+              <div key={label} className="min-h-20 rounded-lg bg-white/[.025] p-3">
                 <p className="text-[9px] uppercase text-zinc-700">{label}</p>
-                <p className="mt-2 text-lg text-zinc-200">{value ?? "—"}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-200">{value || "—"}</p>
               </div>
             ))}
           </div>
@@ -98,13 +107,24 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           {!eventTasks.length && <p className="metal-card col-span-full p-8 text-center text-sm text-zinc-600">{t("common.noData")}</p>}
         </div>
         <div className="mt-5 metal-card p-6">
-          <h2 className="font-display text-lg uppercase text-white">{t("event.setlist")}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-lg uppercase text-white">{t("setlistBuilder.title")}</h2>
+            <Link href={`/events/${id}/setlist`} className="button-secondary">
+              {setlistItems.length ? t("setlistBuilder.edit") : t("setlistBuilder.build")}
+            </Link>
+          </div>
           <ol className="mt-4 divide-y divide-white/[.06]">
-            {setlistItems.map((item: { id: string; order_index: number; live_version?: string | null; song?: { title: string } | null }) => (
-              <li key={item.id} className="flex items-center gap-4 py-3">
+            {setlistItems.map((item: { id: string; order_index: number; live_version?: string | null; notes?: string | null; song?: { title: string; bpm?: number | null; key?: string | null; tuning?: string | null } | null }) => (
+              <li key={item.id} className="flex items-start gap-4 py-3">
                 <span className="w-6 text-xs text-zinc-700">{String(item.order_index + 1).padStart(2, "0")}</span>
-                <span className="text-sm text-zinc-300">{item.song?.title ?? "—"}</span>
-                {item.live_version && <span className="ml-auto text-[10px] text-zinc-700">{item.live_version}</span>}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm text-zinc-300">{item.song?.title ?? "—"}</span>
+                  <span className="mt-1 block text-[10px] uppercase tracking-wide text-zinc-700">
+                    {[item.song?.bpm && `${item.song.bpm} BPM`, item.song?.key, item.song?.tuning].filter(Boolean).join(" · ") || "—"}
+                  </span>
+                  {item.notes && <span className="mt-1 block text-xs text-zinc-600">{item.notes}</span>}
+                </span>
+                {item.live_version && <span className="ml-auto text-[10px] text-zinc-600">{item.live_version}</span>}
               </li>
             ))}
             {!setlistItems.length && <li className="py-8 text-center text-sm text-zinc-600">{t("event.noSetlist")}</li>}
