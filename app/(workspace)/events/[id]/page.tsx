@@ -4,7 +4,9 @@ import {
   CalendarDays,
   Clock3,
   ExternalLink,
+  FileDown,
   MapPin,
+  Printer,
   ShieldAlert,
 } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -211,9 +213,27 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         <div className="mt-5 metal-card p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-lg uppercase text-white">{t("setlistBuilder.title")}</h2>
-            <Link href={`/events/${id}/setlist`} className="button-secondary">
-              {setlistItems.length ? t("setlistBuilder.edit") : t("setlistBuilder.build")}
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/events/${id}/setlist/print`}
+                className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[.025] text-zinc-400 transition hover:border-white/20 hover:bg-white/[.05] hover:text-white"
+                aria-label={t("printSetlist.printSetlist")}
+                title={t("printSetlist.printSetlist")}
+              >
+                <Printer size={15} />
+              </Link>
+              <a
+                href={`/events/${id}/setlist/pdf`}
+                className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[.025] text-zinc-400 transition hover:border-white/20 hover:bg-white/[.05] hover:text-white"
+                aria-label={t("printSetlist.downloadPdf")}
+                title={t("printSetlist.downloadPdf")}
+              >
+                <FileDown size={15} />
+              </a>
+              <Link href={`/events/${id}/setlist`} className="button-secondary">
+                {setlistItems.length ? t("setlistBuilder.edit") : t("setlistBuilder.build")}
+              </Link>
+            </div>
           </div>
           <ol className="mt-4 divide-y divide-white/[.06]">
             {setlistItems.map((item: { id: string; order_index: number; live_version?: string | null; notes?: string | null; song?: { title: string; bpm?: number | null; key?: string | null; tuning?: string | null } | null }) => (

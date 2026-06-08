@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SetlistBuilder } from "@/components/setlist-builder";
 import { PageHeader } from "@/components/ui";
@@ -41,6 +41,9 @@ export default async function EventSetlistPage({
       eyebrow={profile.locale === "en" ? "Setlist builder" : "Конструктор сетлиста"}
       title={t("setlistBuilder.title")}
       description={event.title}
+      action={<Link href={`/events/${id}/setlist/print`} className="button-secondary">
+        <Printer size={14} />{t("printSetlist.printSetlist")}
+      </Link>}
     />
     <SetlistBuilder
       eventId={id}

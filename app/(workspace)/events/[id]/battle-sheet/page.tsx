@@ -7,6 +7,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  Printer,
   ShieldAlert,
 } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -144,7 +145,12 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
             <span className="inline-flex items-center gap-1.5"><Clock3 size={14} />{startTime}</span>
           </p>
         </div>
-        <StatusBadge status={event.status} context="event" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/events/${id}/setlist/print`} className="button-secondary">
+            <Printer size={14} />{t("printSetlist.printSetlist")}
+          </Link>
+          <StatusBadge status={event.status} context="event" />
+        </div>
       </div>
     </header>
 

@@ -33,3 +33,53 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .label { @apply mb-2 block text-[10px] uppercase tracking-[.12em] text-zinc-500; }
   .table-shell { @apply overflow-hidden rounded-xl border border-white/[.07] bg-[#101112]; }
 }
+
+@media print {
+  :root { color-scheme: light; }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  body {
+    font-size: 11pt;
+  }
+  a {
+    color: #000 !important;
+    text-decoration: none;
+  }
+  button,
+  [role="button"],
+  .print\:hidden {
+    display: none !important;
+  }
+  .print-page {
+    min-height: auto !important;
+    padding: 0 !important;
+  }
+  .print-setlist {
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .print-logo {
+    min-height: 2.2cm !important;
+  }
+  .print-logo-image {
+    width: 58% !important;
+    max-width: 16.5cm !important;
+    height: auto !important;
+  }
+  .print-song-row {
+    margin-bottom: .62cm !important;
+  }
+  .print-song-title {
+    font-size: 24pt !important;
+    line-height: 1.04 !important;
+  }
+  .print-materials {
+    font-size: 8pt !important;
+  }
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
