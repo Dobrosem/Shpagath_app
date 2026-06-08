@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { PageHeader, PriorityBadge, StatusBadge } from "@/components/ui";
-import { projects } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
 import { getProfile, getTasks } from "@/lib/data";
@@ -10,14 +10,17 @@ import { translateEnum, translator } from "@/lib/i18n";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let project = projects.find((item) => item.id === id) ?? projects[0];
-  const [allTasks, profile] = await Promise.all([getTasks(), getProfile()]);
+  const [allTasks, profile, supabase] = await Promise.all([getTasks(), getProfile(), createClient()]);
   const t = translator(profile.locale);
-  const supabase = await createClient();
-  if (supabase) {
-    const { data } = await supabase.from("projects").select("*, owner:profiles!owner_id(id,full_name)").eq("id", id).single();
-    if (data) project = data;
-  }
+  if (!supabase) notFound();
+
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("*, owner:profiles!owner_id(id,full_name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !project) notFound();
+
   return <>
     <Link href="/projects" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white"><ArrowLeft size={14} />{profile.locale === "en" ? "Back to projects" : "К проектам"}</Link>
     <PageHeader eyebrow={translateEnum(profile.locale, project.type)} title={project.title} description={project.description} />
