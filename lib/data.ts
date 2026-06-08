@@ -5,6 +5,8 @@ import { getStorageDisplayUrl } from "./storage";
 import type {
   Album,
   Contact,
+  CopyItem,
+  CopyStatus,
   Event,
   EpkProfile,
   EventSetlist,
@@ -229,6 +231,45 @@ export async function getEpkProfile(id: string): Promise<EpkProfile | null> {
     .maybeSingle();
   reportReadError("epk profile", error);
   return (data as EpkProfile | null) ?? null;
+}
+
+export async function getCopyItems(status?: CopyStatus | "all"): Promise<CopyItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  let query = supabase
+    .from("copy_items")
+    .select("*, event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+    .order("updated_at", { ascending: false });
+  if (status && status !== "all") query = query.eq("status", status);
+  const { data, error } = await query;
+  reportReadError("copy items", error);
+  return (data as CopyItem[]) ?? [];
+}
+
+export async function getCopyItem(id: string): Promise<CopyItem | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("copy_items")
+    .select("*, event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug), versions:copy_item_versions(*, author:profiles!created_by(id,full_name))")
+    .eq("id", id)
+    .order("created_at", { referencedTable: "copy_item_versions", ascending: false })
+    .maybeSingle();
+  reportReadError("copy item", error);
+  return (data as CopyItem | null) ?? null;
+}
+
+export async function getRelatedCopyItems(relation: "event_id" | "album_id" | "song_id" | "epk_id", id: string): Promise<CopyItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("copy_items")
+    .select("id,title,category,channel,language,status,body,updated_at,event_id,album_id,song_id,epk_id")
+    .eq(relation, id)
+    .order("updated_at", { ascending: false })
+    .limit(6);
+  reportReadError("related copy items", error);
+  return (data as CopyItem[]) ?? [];
 }
 
 export async function getContacts(): Promise<Contact[]> {

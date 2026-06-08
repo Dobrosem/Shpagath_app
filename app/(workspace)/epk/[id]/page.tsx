@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
+import { RelatedCopyPanel } from "@/components/copy-components";
 import { EpkMediaManager, EpkProfileEditor, EpkPublicLink } from "@/components/epk-components";
-import { getEpkProfile, getProfile } from "@/lib/data";
+import { getAlbums, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function EpkDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [epk, profile] = await Promise.all([getEpkProfile(id), getProfile()]);
+  const [epk, profile, copyItems, events, albums, songs, epks] = await Promise.all([
+    getEpkProfile(id),
+    getProfile(),
+    getRelatedCopyItems("epk_id", id),
+    getEvents(),
+    getAlbums(),
+    getSongs(),
+    getEpkProfiles(),
+  ]);
   if (!epk) notFound();
   const t = translator(profile.locale);
   const canEdit = ["admin", "manager", "member"].includes(profile.role);
@@ -33,6 +42,13 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
       </div>
       <aside className="space-y-5">
         <EpkPublicLink epk={epk} />
+        {canEdit && <RelatedCopyPanel
+          title={t("copy.epkCopy")}
+          createLabel={t("copy.createEpkCopy")}
+          items={copyItems}
+          options={{ events, albums, songs, epks }}
+          defaults={{ epk_id: epk.id, category: "epk_bio" }}
+        />}
       </aside>
     </div>
   </>;

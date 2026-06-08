@@ -1,8 +1,8 @@
 # Saphath Cloud
 
 Закрытый рабочий портал Saphath для проектов, задач, песен, материалов,
-резервных копий, альбомов, концертов, сетлистов, боевых листов, EPK и
-упаковочных листов.
+резервных копий, альбомов, концертов, сетлистов, боевых листов, EPK,
+библиотеки текстов и упаковочных листов.
 
 ## Stack
 
@@ -50,6 +50,8 @@ supabase/migrations/005_song_edit_cover_and_material_crud.sql
 supabase/migrations/006_event_posters_and_task_crud.sql
 supabase/migrations/007_albums_releases.sql
 supabase/migrations/008_epk_mvp.sql
+supabase/migrations/009_copy_library.sql
+supabase/migrations/010_copy_delete_policy_fix.sql
 ```
 
 After migrations, create users in Supabase Authentication. Public signup is not
@@ -163,6 +165,21 @@ The public route reads real Supabase data and returns content only for EPK
 profiles with `is_public = true`. Draft/private EPK profiles are hidden by RLS
 and render as not found.
 
+## Copy Library
+
+Workspace routes:
+
+```text
+/copy
+/copy/[id]
+```
+
+Copy Library is an internal module for reusable event, release, EPK, press,
+social, email and ad texts. It stores `copy_items` and explicit
+`copy_item_versions`, supports relations to events, albums, songs and EPK
+profiles, and is protected by Supabase Auth/RLS. It has no public route and does
+not expose texts to anonymous users.
+
 ## Project Structure
 
 ```text
@@ -199,6 +216,7 @@ Useful smoke routes:
 /dashboard
 /songs
 /albums
+/copy
 /events
 /events/[id]
 /events/[id]/setlist

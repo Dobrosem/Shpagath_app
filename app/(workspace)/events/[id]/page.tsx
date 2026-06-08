@@ -11,11 +11,12 @@ import {
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
+import { RelatedCopyPanel } from "@/components/copy-components";
 import { EventEditDialog } from "@/components/event-edit-dialog";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
 import { StatusBadge } from "@/components/ui";
-import { getProfile, getRedZoneIssues } from "@/lib/data";
+import { getAlbums, getEpkProfiles, getEvents, getProfile, getRedZoneIssues, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -24,10 +25,15 @@ import { getEventPosterUrl } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [supabase, profile, issues] = await Promise.all([
+  const [supabase, profile, issues, copyItems, allEvents, albums, songs, epks] = await Promise.all([
     createClient(),
     getProfile(),
     getRedZoneIssues(id),
+    getRelatedCopyItems("event_id", id),
+    getEvents(),
+    getAlbums(),
+    getSongs(),
+    getEpkProfiles(),
   ]);
   const t = translator(profile.locale);
   if (!supabase) notFound();
@@ -202,6 +208,14 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           ))}
           {!technicalLinks.length && <p className="py-5 text-sm text-zinc-600">{t("common.noData")}</p>}
         </section>
+
+        <RelatedCopyPanel
+          title={t("copy.eventCopy")}
+          createLabel={t("copy.createEventCopy")}
+          items={copyItems}
+          options={{ events: allEvents, albums, songs, epks }}
+          defaults={{ event_id: event.id, category: "concert_announcement" }}
+        />
       </div>
 
       <div>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionState, Locale } from "@/lib/types";
+import type { ActionState, CopyCategory, CopyChannel, CopyStatus, Locale } from "@/lib/types";
 
 const allowedTables = [
   "projects",
@@ -248,6 +248,9 @@ const albumTypes = new Set(["album", "ep", "single", "live", "demo", "compilatio
 const albumStatuses = new Set(["draft", "in_progress", "review", "approved", "released", "archived"]);
 const albumCoverStatuses = new Set(["draft", "review", "approved", "outdated", "archived"]);
 const epkMediaTypes = new Set(["music", "video", "live_video", "interview", "press", "document", "photo_gallery", "other"]);
+const copyCategories = new Set(["concert_announcement", "concert_reminder", "release_announcement", "song_description", "epk_bio", "press_release", "festival_pitch", "social_post", "ad_copy", "telegram_post", "vk_post", "email", "other"]);
+const copyChannels = new Set(["vk", "telegram", "instagram", "youtube", "press", "email", "website", "ads", "internal", "other"]);
+const copyStatuses = new Set(["draft", "review", "approved", "archived"]);
 
 function albumPayload(formData: FormData, locale: Locale) {
   const title = String(formData.get("title") ?? "").trim();
@@ -2078,6 +2081,186 @@ export async function moveEpkMediaLink(epkId: string, linkId: string, direction:
   if (error) return { success: false, error: readableError(error.message) };
   await revalidateEpkPaths(session.supabase, epkId);
   return { success: true, error: null };
+}
+
+function copyItemPayload(formData: FormData, locale: Locale) {
+  const title = String(formData.get("title") ?? "").trim();
+  const category = String(formData.get("category") ?? "social_post").trim() as CopyCategory;
+  const channelValue = String(formData.get("channel") ?? "").trim() as CopyChannel | "";
+  const language = String(formData.get("language") ?? "ru").trim() as Locale;
+  const status = String(formData.get("status") ?? "draft").trim() as CopyStatus;
+  const body = String(formData.get("body") ?? "").trim();
+  if (!title) return { error: localized(locale, "Введите название текста.", "Enter the copy title."), payload: null };
+  if (!copyCategories.has(category)) return { error: localized(locale, "Выберите категорию.", "Select the category."), payload: null };
+  if (channelValue && !copyChannels.has(channelValue)) return { error: localized(locale, "Выберите канал.", "Select the channel."), payload: null };
+  if (!["ru", "en"].includes(language)) return { error: localized(locale, "Выберите язык.", "Select the language."), payload: null };
+  if (!copyStatuses.has(status)) return { error: localized(locale, "Выберите статус.", "Select the status."), payload: null };
+  if (!body) return { error: localized(locale, "Введите текст.", "Enter the copy body."), payload: null };
+
+  const relation = (field: string) => String(formData.get(field) ?? "").trim() || null;
+  return {
+    error: null,
+    payload: {
+      title,
+      category,
+      channel: channelValue || null,
+      language,
+      status,
+      body,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      event_id: relation("event_id"),
+      album_id: relation("album_id"),
+      song_id: relation("song_id"),
+      epk_id: relation("epk_id"),
+    },
+  };
+}
+
+function revalidateCopyPaths(item?: { id?: string | null; event_id?: string | null; album_id?: string | null; song_id?: string | null; epk_id?: string | null }) {
+  revalidatePath("/copy");
+  if (item?.id) revalidatePath(`/copy/${item.id}`);
+  if (item?.event_id) revalidatePath(`/events/${item.event_id}`);
+  if (item?.album_id) revalidatePath(`/albums/${item.album_id}`);
+  if (item?.song_id) revalidatePath(`/songs/${item.song_id}`);
+  if (item?.epk_id) revalidatePath(`/epk/${item.epk_id}`);
+}
+
+export async function createCopyItem(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = copyItemPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("copy_items")
+    .insert({ ...result.payload, created_by: session.user.id })
+    .select("id,event_id,album_id,song_id,epk_id")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  revalidateCopyPaths(data);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateCopyItem(
+  copyItemId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = copyItemPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data: current } = await session.supabase
+    .from("copy_items")
+    .select("body,notes,event_id,album_id,song_id,epk_id")
+    .eq("id", copyItemId)
+    .maybeSingle();
+  if (current?.body && current.body !== result.payload.body) {
+    const { error: versionError } = await session.supabase.from("copy_item_versions").insert({
+      copy_item_id: copyItemId,
+      body: current.body,
+      notes: current.notes,
+      created_by: session.user.id,
+    });
+    if (versionError) console.error("Supabase create copy version before update error:", versionError);
+  }
+  const { data, error } = await session.supabase
+    .from("copy_items")
+    .update(result.payload)
+    .eq("id", copyItemId)
+    .select("id,event_id,album_id,song_id,epk_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Текст не найден или нет прав на редактирование.", "Copy item not found or access denied."),
+    };
+  }
+  revalidateCopyPaths(data);
+  if (current) revalidateCopyPaths({ id: copyItemId, ...current });
+  return { success: true, error: null, id: copyItemId };
+}
+
+export async function createCopyItemVersion(
+  copyItemId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return { success: false, error: localized(locale, "Введите текст.", "Enter the copy body.") };
+  const { error } = await session.supabase.from("copy_item_versions").insert({
+    copy_item_id: copyItemId,
+    body,
+    notes: String(formData.get("version_notes") ?? "").trim() || null,
+    created_by: session.user.id,
+  });
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  revalidateCopyPaths({ id: copyItemId });
+  return { success: true, error: null, id: copyItemId };
+}
+
+async function setCopyItemStatus(copyItemId: string, status: CopyStatus, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data, error } = await session.supabase
+    .from("copy_items")
+    .update({ status })
+    .eq("id", copyItemId)
+    .select("id,event_id,album_id,song_id,epk_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Текст не найден или нет прав на редактирование.", "Copy item not found or access denied."),
+    };
+  }
+  revalidateCopyPaths(data);
+  return { success: true, error: null, id: copyItemId };
+}
+
+export async function approveCopyItem(copyItemId: string, locale: Locale): Promise<ActionState> {
+  return setCopyItemStatus(copyItemId, "approved", locale);
+}
+
+export async function archiveCopyItem(copyItemId: string, locale: Locale): Promise<ActionState> {
+  return setCopyItemStatus(copyItemId, "archived", locale);
+}
+
+export async function deleteCopyItem(copyItemId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data: current } = await session.supabase
+    .from("copy_items")
+    .select("event_id,album_id,song_id,epk_id")
+    .eq("id", copyItemId)
+    .maybeSingle();
+  const { data: deleted, error } = await session.supabase
+    .from("copy_items")
+    .delete()
+    .eq("id", copyItemId)
+    .select("id")
+    .maybeSingle();
+  if (error || !deleted) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Текст не удалён. Проверьте права доступа и RLS-политику.", "Copy item was not deleted. Check access rights and the RLS policy."),
+    };
+  }
+  revalidateCopyPaths({ id: copyItemId, ...current });
+  return { success: true, error: null, id: copyItemId };
 }
 
 export async function signIn(formData: FormData) {

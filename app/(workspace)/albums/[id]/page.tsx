@@ -5,14 +5,23 @@ import {
   AlbumEditDialog,
   AlbumSongsManager,
 } from "@/components/album-components";
+import { RelatedCopyPanel } from "@/components/copy-components";
 import { StatusBadge } from "@/components/ui";
-import { getAlbum, getProfile, getSongs } from "@/lib/data";
+import { getAlbum, getAlbums, getEpkProfiles, getEvents, getProfile, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { formatDate, getAlbumCoverUrl } from "@/lib/utils";
 
 export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [album, songs, profile] = await Promise.all([getAlbum(id), getSongs(), getProfile()]);
+  const [album, songs, profile, copyItems, events, albums, epks] = await Promise.all([
+    getAlbum(id),
+    getSongs(),
+    getProfile(),
+    getRelatedCopyItems("album_id", id),
+    getEvents(),
+    getAlbums(),
+    getEpkProfiles(),
+  ]);
   if (!album) notFound();
   const t = translator(profile.locale);
   const availableSongs = songs.filter((song) => !song.album_id);
@@ -62,5 +71,14 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
     </section>
 
     <AlbumSongsManager album={album} availableSongs={availableSongs} readOnly={!canEdit} />
+    {canEdit && <div className="mt-5">
+      <RelatedCopyPanel
+        title={t("copy.releaseCopy")}
+        createLabel={t("copy.createReleaseCopy")}
+        items={copyItems}
+        options={{ events, albums, songs, epks }}
+        defaults={{ album_id: album.id, category: "release_announcement" }}
+      />
+    </div>}
   </>;
 }

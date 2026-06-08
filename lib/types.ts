@@ -5,6 +5,22 @@ export type Priority = "low" | "normal" | "high" | "critical";
 export type AlbumType = "album" | "ep" | "single" | "live" | "demo" | "compilation";
 export type AlbumStatus = "draft" | "in_progress" | "review" | "approved" | "released" | "archived";
 export type CoverStatus = "draft" | "review" | "approved" | "outdated" | "archived";
+export type CopyCategory =
+  | "concert_announcement"
+  | "concert_reminder"
+  | "release_announcement"
+  | "song_description"
+  | "epk_bio"
+  | "press_release"
+  | "festival_pitch"
+  | "social_post"
+  | "ad_copy"
+  | "telegram_post"
+  | "vk_post"
+  | "email"
+  | "other";
+export type CopyChannel = "vk" | "telegram" | "instagram" | "youtube" | "press" | "email" | "website" | "ads" | "internal" | "other";
+export type CopyStatus = "draft" | "review" | "approved" | "archived";
 
 export interface Profile {
   id: string;
@@ -228,6 +244,39 @@ export interface EpkProfile {
   created_at?: string;
   updated_at?: string;
   media_links?: EpkMediaLink[];
+}
+
+export interface CopyItemVersion {
+  id: string;
+  copy_item_id: string;
+  body: string;
+  notes?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  author?: Pick<Profile, "id" | "full_name"> | null;
+}
+
+export interface CopyItem {
+  id: string;
+  title: string;
+  category: CopyCategory;
+  channel?: CopyChannel | null;
+  language: Locale;
+  status: CopyStatus;
+  body: string;
+  notes?: string | null;
+  event_id?: string | null;
+  album_id?: string | null;
+  song_id?: string | null;
+  epk_id?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  event?: Pick<Event, "id" | "title"> | null;
+  album?: Pick<Album, "id" | "title"> | null;
+  song?: Pick<Song, "id" | "title"> | null;
+  epk?: Pick<EpkProfile, "id" | "title" | "slug"> | null;
+  versions?: CopyItemVersion[];
 }
 
 export interface TaskTemplateItem {
