@@ -14,34 +14,72 @@ import type { Profile } from "@/lib/types";
 import { useI18n } from "./i18n-provider";
 import { translateLiteral } from "@/lib/i18n";
 
-const navigation = [
+const navigationGroups = [
+  {
+    key: "nav.group.workspace" as const,
+    items: [
+      { href: "/dashboard", key: "nav.dashboard" as const, icon: Gauge },
+      { href: "/my", key: "nav.my" as const, icon: UserRound },
+      { href: "/tasks", key: "nav.tasks" as const, icon: CheckSquare2 },
+      { href: "/projects", key: "nav.projects" as const, icon: FolderKanban },
+    ],
+  },
+  {
+    key: "nav.group.music" as const,
+    items: [
+      { href: "/songs", key: "nav.songs" as const, icon: Music2 },
+      { href: "/albums", key: "nav.albums" as const, icon: Disc3 },
+    ],
+  },
+  {
+    key: "nav.group.live" as const,
+    items: [
+      { href: "/events", key: "nav.events" as const, icon: CalendarDays },
+      { href: "/rehearsals", key: "nav.rehearsals" as const, icon: UsersRound },
+      { href: "/packing-lists", key: "nav.packingLists" as const, icon: PackageCheck },
+    ],
+  },
+  {
+    key: "nav.group.promotion" as const,
+    items: [
+      { href: "/promo", key: "nav.promo" as const, icon: Megaphone },
+      { href: "/epk", key: "nav.epk" as const, icon: FileText },
+      { href: "/copy", key: "nav.copy" as const, icon: ClipboardList },
+    ],
+  },
+  {
+    key: "nav.group.administration" as const,
+    items: [
+      { href: "/contacts", key: "nav.contacts" as const, icon: ContactRound },
+      { href: "/finance", key: "nav.finance" as const, icon: CircleDollarSign },
+      { href: "/settings", key: "nav.settings" as const, icon: Settings },
+    ],
+  },
+];
+
+const mobileNavigation = [
   { href: "/dashboard", key: "nav.dashboard" as const, icon: Gauge },
-  { href: "/my", key: "nav.my" as const, icon: UserRound },
-  { href: "/projects", key: "nav.projects" as const, icon: FolderKanban },
   { href: "/tasks", key: "nav.tasks" as const, icon: CheckSquare2 },
   { href: "/songs", key: "nav.songs" as const, icon: Music2 },
-  { href: "/albums", key: "nav.albums" as const, icon: Disc3 },
   { href: "/events", key: "nav.events" as const, icon: CalendarDays },
-  { href: "/rehearsals", key: "nav.rehearsals" as const, icon: UsersRound },
-  { href: "/promo", key: "nav.promo" as const, icon: Megaphone },
-  { href: "/epk", key: "nav.epk" as const, icon: FileText },
-  { href: "/copy", key: "nav.copy" as const, icon: ClipboardList },
-  { href: "/contacts", key: "nav.contacts" as const, icon: ContactRound },
-  { href: "/finance", key: "nav.finance" as const, icon: CircleDollarSign },
-  { href: "/packing-lists", key: "nav.packingLists" as const, icon: PackageCheck },
 ];
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { t } = useI18n();
-  return <nav className="space-y-1">
-    {navigation.map(({ href, key, icon: Icon }) => {
-      const active = pathname === href || pathname.startsWith(`${href}/`);
-      return <Link key={href} href={href} onClick={onNavigate} className={cn("nav-item", active && "nav-item-active")}>
-        <Icon size={17} strokeWidth={1.7} /><span>{t(key)}</span>
-        {active && <span className="ml-auto h-1 w-1 rounded-full bg-ember" />}
-      </Link>;
-    })}
+  return <nav className="space-y-5">
+    {navigationGroups.map((group) => <section key={group.key}>
+      <p className="mb-2 px-3 text-[9px] font-medium uppercase tracking-[.22em] text-zinc-700">{t(group.key)}</p>
+      <div className="space-y-1">
+        {group.items.map(({ href, key, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(`${href}/`);
+          return <Link key={href} href={href} onClick={onNavigate} className={cn("nav-item", active && "nav-item-active")}>
+            <Icon size={17} strokeWidth={1.7} /><span>{t(key)}</span>
+            {active && <span className="ml-auto h-1 w-1 rounded-full bg-ember" />}
+          </Link>;
+        })}
+      </div>
+    </section>)}
   </nav>;
 }
 
@@ -67,10 +105,11 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
   return <div className="min-h-screen bg-void text-zinc-300">
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 overflow-y-auto border-r border-white/[.06] bg-[#090a0a] px-4 py-6 lg:flex lg:flex-col">
       <div className="px-2"><Mark /></div>
-      <div className="my-7 h-px bg-white/[.06]" />
-      <NavItems />
-      <div className="mt-auto space-y-1 border-t border-white/[.06] pt-4">
-        <Link href="/settings" className="nav-item"><Settings size={17} />{t("nav.settings")}</Link>
+      <div className="my-5 h-px bg-white/[.06]" />
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <NavItems />
+      </div>
+      <div className="mt-4 space-y-1 border-t border-white/[.06] pt-4">
         <button onClick={signOut} className="nav-item w-full"><LogOut size={17} />{t("nav.logout")}</button>
       </div>
     </aside>
@@ -95,7 +134,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
     </div>
 
     <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t border-white/10 bg-[#090a0a]/95 px-2 backdrop-blur-xl lg:hidden">
-      {navigation.slice(0, 5).map(({ href, key, icon: Icon }) => <Link key={href} href={href} className={cn("flex min-w-0 flex-1 flex-col items-center gap-1 px-1 text-center text-[9px] leading-tight text-zinc-600", pathname.startsWith(href) && "text-zinc-100")}><Icon size={18} /><span>{t(key)}</span></Link>)}
+      {mobileNavigation.map(({ href, key, icon: Icon }) => <Link key={href} href={href} className={cn("flex min-w-0 flex-1 flex-col items-center gap-1 px-1 text-center text-[9px] leading-tight text-zinc-600", pathname.startsWith(href) && "text-zinc-100")}><Icon size={18} /><span>{t(key)}</span></Link>)}
     </nav>
   </div>;
 }
