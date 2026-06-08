@@ -1,23 +1,27 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
+import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { CopyItemEditor } from "@/components/copy-components";
-import { getAlbums, getCopyItem, getEpkProfiles, getEvents, getProfile, getSongs } from "@/lib/data";
+import { getAlbums, getCopyItem, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 
 export default async function CopyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [item, profile, events, albums, songs, epks] = await Promise.all([
+  const [item, profile, events, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
     getCopyItem(id),
     getProfile(),
     getEvents(),
     getAlbums(),
     getSongs(),
     getEpkProfiles(),
+    getCopyItems("all"),
+    getRelatedContentCalendarItems("copy_item_id", id),
   ]);
   if (!item) notFound();
   const t = translator(profile.locale);
   const options = { events, albums, songs, epks };
+  const calendarOptions = { copyItems, events, albums, songs, epks };
   const canEdit = ["admin", "manager", "member"].includes(profile.role);
 
   return <>
@@ -32,5 +36,14 @@ export default async function CopyDetailPage({ params }: { params: Promise<{ id:
       </p>
     </header>
     <CopyItemEditor item={item} options={options} canDelete={canEdit} />
+    <div className="mt-5">
+      <RelatedContentCalendarPanel
+        title={t("contentCalendar.scheduledPosts")}
+        createLabel={t("contentCalendar.schedulePost")}
+        items={calendarItems}
+        options={calendarOptions}
+        defaults={{ copy_item_id: item.id, channel: item.channel ?? "vk", content_type: "post" }}
+      />
+    </div>
   </>;
 }

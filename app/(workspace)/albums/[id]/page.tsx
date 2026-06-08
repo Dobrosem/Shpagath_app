@@ -5,15 +5,16 @@ import {
   AlbumEditDialog,
   AlbumSongsManager,
 } from "@/components/album-components";
+import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { StatusBadge } from "@/components/ui";
-import { getAlbum, getAlbums, getEpkProfiles, getEvents, getProfile, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { getAlbum, getAlbums, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { formatDate, getAlbumCoverUrl } from "@/lib/utils";
 
 export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [album, songs, profile, copyItems, events, albums, epks] = await Promise.all([
+  const [album, songs, profile, relatedCopyItems, events, albums, epks, copyItems, calendarItems] = await Promise.all([
     getAlbum(id),
     getSongs(),
     getProfile(),
@@ -21,6 +22,8 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
     getEvents(),
     getAlbums(),
     getEpkProfiles(),
+    getCopyItems("all"),
+    getRelatedContentCalendarItems("album_id", id),
   ]);
   if (!album) notFound();
   const t = translator(profile.locale);
@@ -75,10 +78,19 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
       <RelatedCopyPanel
         title={t("copy.releaseCopy")}
         createLabel={t("copy.createReleaseCopy")}
-        items={copyItems}
+        items={relatedCopyItems}
         options={{ events, albums, songs, epks }}
         defaults={{ album_id: album.id, category: "release_announcement" }}
       />
+      <div className="mt-5">
+        <RelatedContentCalendarPanel
+          title={t("contentCalendar.releasePlan")}
+          createLabel={t("contentCalendar.schedulePost")}
+          items={calendarItems}
+          options={{ copyItems, events, albums, songs, epks }}
+          defaults={{ album_id: album.id, content_type: "announcement" }}
+        />
+      </div>
     </div>}
   </>;
 }

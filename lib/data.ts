@@ -5,6 +5,7 @@ import { getStorageDisplayUrl } from "./storage";
 import type {
   Album,
   Contact,
+  ContentCalendarItem,
   CopyItem,
   CopyStatus,
   Event,
@@ -270,6 +271,43 @@ export async function getRelatedCopyItems(relation: "event_id" | "album_id" | "s
     .limit(6);
   reportReadError("related copy items", error);
   return (data as CopyItem[]) ?? [];
+}
+
+export async function getContentCalendarItems(): Promise<ContentCalendarItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("content_calendar_items")
+    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+    .order("scheduled_at", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  reportReadError("content calendar items", error);
+  return (data as ContentCalendarItem[]) ?? [];
+}
+
+export async function getContentCalendarItem(id: string): Promise<ContentCalendarItem | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("content_calendar_items")
+    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+    .eq("id", id)
+    .maybeSingle();
+  reportReadError("content calendar item", error);
+  return (data as ContentCalendarItem | null) ?? null;
+}
+
+export async function getRelatedContentCalendarItems(relation: "copy_item_id" | "event_id" | "album_id" | "song_id" | "epk_id", id: string): Promise<ContentCalendarItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("content_calendar_items")
+    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+    .eq(relation, id)
+    .order("scheduled_at", { ascending: true, nullsFirst: false })
+    .limit(6);
+  reportReadError("related content calendar items", error);
+  return (data as ContentCalendarItem[]) ?? [];
 }
 
 export async function getContacts(): Promise<Contact[]> {

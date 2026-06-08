@@ -41,7 +41,7 @@ function CopyBadge({ status }: { status: CopyStatus }) {
   return <span className={cn("badge", statusTone(status))}><i className="h-1.5 w-1.5 rounded-full bg-current" />{translateEnum(locale, status)}</span>;
 }
 
-function CopyClipboardButton({ body, compact }: { body: string; compact?: boolean }) {
+export function CopyClipboardButton({ body, compact }: { body: string; compact?: boolean }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 

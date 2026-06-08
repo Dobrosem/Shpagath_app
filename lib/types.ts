@@ -21,6 +21,9 @@ export type CopyCategory =
   | "other";
 export type CopyChannel = "vk" | "telegram" | "instagram" | "youtube" | "press" | "email" | "website" | "ads" | "internal" | "other";
 export type CopyStatus = "draft" | "review" | "approved" | "archived";
+export type ContentChannel = CopyChannel;
+export type ContentType = "post" | "story" | "reels" | "shorts" | "video" | "announcement" | "reminder" | "press_release" | "ad" | "email" | "article" | "other";
+export type ContentStatus = "idea" | "draft" | "ready" | "scheduled" | "published" | "cancelled" | "archived";
 
 export interface Profile {
   id: string;
@@ -277,6 +280,33 @@ export interface CopyItem {
   song?: Pick<Song, "id" | "title"> | null;
   epk?: Pick<EpkProfile, "id" | "title" | "slug"> | null;
   versions?: CopyItemVersion[];
+}
+
+export interface ContentCalendarItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  channel: ContentChannel;
+  content_type: ContentType;
+  status: ContentStatus;
+  scheduled_at?: string | null;
+  published_at?: string | null;
+  copy_item_id?: string | null;
+  event_id?: string | null;
+  album_id?: string | null;
+  song_id?: string | null;
+  epk_id?: string | null;
+  asset_url?: string | null;
+  result_url?: string | null;
+  notes?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  copy_item?: Pick<CopyItem, "id" | "title" | "body"> | null;
+  event?: Pick<Event, "id" | "title"> | null;
+  album?: Pick<Album, "id" | "title"> | null;
+  song?: Pick<Song, "id" | "title"> | null;
+  epk?: Pick<EpkProfile, "id" | "title" | "slug"> | null;
 }
 
 export interface TaskTemplateItem {

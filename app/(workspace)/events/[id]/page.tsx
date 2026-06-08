@@ -11,12 +11,13 @@ import {
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
+import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { EventEditDialog } from "@/components/event-edit-dialog";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
 import { StatusBadge } from "@/components/ui";
-import { getAlbums, getEpkProfiles, getEvents, getProfile, getRedZoneIssues, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { getAlbums, getCopyItems, getEpkProfiles, getEvents, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -25,7 +26,7 @@ import { getEventPosterUrl } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [supabase, profile, issues, copyItems, allEvents, albums, songs, epks] = await Promise.all([
+  const [supabase, profile, issues, relatedCopyItems, allEvents, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
     createClient(),
     getProfile(),
     getRedZoneIssues(id),
@@ -34,6 +35,8 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     getAlbums(),
     getSongs(),
     getEpkProfiles(),
+    getCopyItems("all"),
+    getRelatedContentCalendarItems("event_id", id),
   ]);
   const t = translator(profile.locale);
   if (!supabase) notFound();
@@ -212,9 +215,16 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         <RelatedCopyPanel
           title={t("copy.eventCopy")}
           createLabel={t("copy.createEventCopy")}
-          items={copyItems}
+          items={relatedCopyItems}
           options={{ events: allEvents, albums, songs, epks }}
           defaults={{ event_id: event.id, category: "concert_announcement" }}
+        />
+        <RelatedContentCalendarPanel
+          title={t("contentCalendar.eventPlan")}
+          createLabel={t("contentCalendar.schedulePost")}
+          items={calendarItems}
+          options={{ copyItems, events: allEvents, albums, songs, epks }}
+          defaults={{ event_id: event.id, content_type: "announcement" }}
         />
       </div>
 

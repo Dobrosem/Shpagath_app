@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  CalendarDays, CheckSquare2, CircleDollarSign, ContactRound,
+  CalendarDays, CalendarRange, CheckSquare2, CircleDollarSign, ContactRound,
   ClipboardList, Disc3, FileText, FolderKanban, Gauge, LogOut, Megaphone, Menu, Music2, PackageCheck, Settings,
   SlidersHorizontal, UserRound, UsersRound, X,
 } from "lucide-react";
@@ -45,6 +45,7 @@ const navigationGroups = [
       { href: "/promo", key: "nav.promo" as const, icon: Megaphone },
       { href: "/epk", key: "nav.epk" as const, icon: FileText },
       { href: "/copy", key: "nav.copy" as const, icon: ClipboardList },
+      { href: "/content-calendar", key: "nav.contentCalendar" as const, icon: CalendarRange },
     ],
   },
   {

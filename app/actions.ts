@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionState, CopyCategory, CopyChannel, CopyStatus, Locale } from "@/lib/types";
+import type { ActionState, ContentChannel, ContentStatus, ContentType, CopyCategory, CopyChannel, CopyStatus, Locale } from "@/lib/types";
 
 const allowedTables = [
   "projects",
@@ -251,6 +251,9 @@ const epkMediaTypes = new Set(["music", "video", "live_video", "interview", "pre
 const copyCategories = new Set(["concert_announcement", "concert_reminder", "release_announcement", "song_description", "epk_bio", "press_release", "festival_pitch", "social_post", "ad_copy", "telegram_post", "vk_post", "email", "other"]);
 const copyChannels = new Set(["vk", "telegram", "instagram", "youtube", "press", "email", "website", "ads", "internal", "other"]);
 const copyStatuses = new Set(["draft", "review", "approved", "archived"]);
+const contentChannels = new Set(["vk", "telegram", "instagram", "youtube", "website", "email", "ads", "press", "internal", "other"]);
+const contentTypes = new Set(["post", "story", "reels", "shorts", "video", "announcement", "reminder", "press_release", "ad", "email", "article", "other"]);
+const contentStatuses = new Set(["idea", "draft", "ready", "scheduled", "published", "cancelled", "archived"]);
 
 function albumPayload(formData: FormData, locale: Locale) {
   const title = String(formData.get("title") ?? "").trim();
@@ -2261,6 +2264,168 @@ export async function deleteCopyItem(copyItemId: string, locale: Locale): Promis
   }
   revalidateCopyPaths({ id: copyItemId, ...current });
   return { success: true, error: null, id: copyItemId };
+}
+
+function contentCalendarPayload(formData: FormData, locale: Locale) {
+  const title = String(formData.get("title") ?? "").trim();
+  const channel = String(formData.get("channel") ?? "vk").trim() as ContentChannel;
+  const contentType = String(formData.get("content_type") ?? "post").trim() as ContentType;
+  const status = String(formData.get("status") ?? "draft").trim() as ContentStatus;
+  const scheduledAt = String(formData.get("scheduled_at") ?? "").trim();
+  const publishedAt = String(formData.get("published_at") ?? "").trim();
+  if (!title) return { error: localized(locale, "Введите название публикации.", "Enter the calendar item title."), payload: null };
+  if (!contentChannels.has(channel)) return { error: localized(locale, "Выберите канал.", "Select the channel."), payload: null };
+  if (!contentTypes.has(contentType)) return { error: localized(locale, "Выберите тип контента.", "Select the content type."), payload: null };
+  if (!contentStatuses.has(status)) return { error: localized(locale, "Выберите статус.", "Select the status."), payload: null };
+
+  const relation = (field: string) => String(formData.get(field) ?? "").trim() || null;
+  return {
+    error: null,
+    payload: {
+      title,
+      description: String(formData.get("description") ?? "").trim() || null,
+      channel,
+      content_type: contentType,
+      status,
+      scheduled_at: scheduledAt || null,
+      published_at: publishedAt || null,
+      copy_item_id: relation("copy_item_id"),
+      event_id: relation("event_id"),
+      album_id: relation("album_id"),
+      song_id: relation("song_id"),
+      epk_id: relation("epk_id"),
+      asset_url: String(formData.get("asset_url") ?? "").trim() || null,
+      result_url: String(formData.get("result_url") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    },
+  };
+}
+
+function revalidateContentCalendarPaths(item?: { id?: string | null; copy_item_id?: string | null; event_id?: string | null; album_id?: string | null; song_id?: string | null; epk_id?: string | null }) {
+  revalidatePath("/content-calendar");
+  if (item?.id) revalidatePath(`/content-calendar/${item.id}`);
+  if (item?.copy_item_id) {
+    revalidatePath("/copy");
+    revalidatePath(`/copy/${item.copy_item_id}`);
+  }
+  if (item?.event_id) revalidatePath(`/events/${item.event_id}`);
+  if (item?.album_id) revalidatePath(`/albums/${item.album_id}`);
+  if (item?.song_id) revalidatePath(`/songs/${item.song_id}`);
+  if (item?.epk_id) revalidatePath(`/epk/${item.epk_id}`);
+}
+
+export async function createContentCalendarItem(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = contentCalendarPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("content_calendar_items")
+    .insert({ ...result.payload, created_by: session.user.id })
+    .select("id,copy_item_id,event_id,album_id,song_id,epk_id")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  revalidateContentCalendarPaths(data);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateContentCalendarItem(
+  itemId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = contentCalendarPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data: current } = await session.supabase
+    .from("content_calendar_items")
+    .select("copy_item_id,event_id,album_id,song_id,epk_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  const { data, error } = await session.supabase
+    .from("content_calendar_items")
+    .update(result.payload)
+    .eq("id", itemId)
+    .select("id,copy_item_id,event_id,album_id,song_id,epk_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Публикация не найдена или нет прав на редактирование.", "Calendar item not found or access denied."),
+    };
+  }
+  revalidateContentCalendarPaths(data);
+  if (current) revalidateContentCalendarPaths({ id: itemId, ...current });
+  return { success: true, error: null, id: itemId };
+}
+
+async function setContentCalendarItemStatus(itemId: string, status: ContentStatus, locale: Locale, publishedAt?: string): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const payload: { status: ContentStatus; published_at?: string | null } = { status };
+  if (publishedAt !== undefined) payload.published_at = publishedAt;
+  const { data, error } = await session.supabase
+    .from("content_calendar_items")
+    .update(payload)
+    .eq("id", itemId)
+    .select("id,copy_item_id,event_id,album_id,song_id,epk_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Публикация не найдена или нет прав на редактирование.", "Calendar item not found or access denied."),
+    };
+  }
+  revalidateContentCalendarPaths(data);
+  return { success: true, error: null, id: itemId };
+}
+
+export async function markContentCalendarItemPublished(itemId: string, locale: Locale): Promise<ActionState> {
+  return setContentCalendarItemStatus(itemId, "published", locale, new Date().toISOString());
+}
+
+export async function cancelContentCalendarItem(itemId: string, locale: Locale): Promise<ActionState> {
+  return setContentCalendarItemStatus(itemId, "cancelled", locale);
+}
+
+export async function archiveContentCalendarItem(itemId: string, locale: Locale): Promise<ActionState> {
+  return setContentCalendarItemStatus(itemId, "archived", locale);
+}
+
+export async function deleteContentCalendarItem(itemId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data: current } = await session.supabase
+    .from("content_calendar_items")
+    .select("copy_item_id,event_id,album_id,song_id,epk_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  const { data: deleted, error } = await session.supabase
+    .from("content_calendar_items")
+    .delete()
+    .eq("id", itemId)
+    .select("id")
+    .maybeSingle();
+  if (error || !deleted) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Публикация не удалена. Проверьте права доступа и RLS-политику.", "Calendar item was not deleted. Check access rights and the RLS policy."),
+    };
+  }
+  revalidateContentCalendarPaths({ id: itemId, ...current });
+  return { success: true, error: null, id: itemId };
 }
 
 export async function signIn(formData: FormData) {

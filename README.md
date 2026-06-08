@@ -52,6 +52,7 @@ supabase/migrations/007_albums_releases.sql
 supabase/migrations/008_epk_mvp.sql
 supabase/migrations/009_copy_library.sql
 supabase/migrations/010_copy_delete_policy_fix.sql
+supabase/migrations/011_content_calendar.sql
 ```
 
 After migrations, create users in Supabase Authentication. Public signup is not
@@ -180,6 +181,21 @@ social, email and ad texts. It stores `copy_items` and explicit
 profiles, and is protected by Supabase Auth/RLS. It has no public route and does
 not expose texts to anonymous users.
 
+## Content Calendar
+
+Workspace routes:
+
+```text
+/content-calendar
+/content-calendar/[id]
+```
+
+Content Calendar is an internal planning calendar for Saphath publications. It
+links planned posts to Copy Library texts, events, albums, songs and EPK
+profiles. The module stores scheduling metadata, channels, content types,
+statuses, assets and result links. It does not publish automatically to VK,
+Telegram or any other platform.
+
 ## Project Structure
 
 ```text
@@ -217,6 +233,7 @@ Useful smoke routes:
 /songs
 /albums
 /copy
+/content-calendar
 /events
 /events/[id]
 /events/[id]/setlist

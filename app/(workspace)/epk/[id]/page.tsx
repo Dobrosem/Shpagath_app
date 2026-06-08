@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
+import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { EpkMediaManager, EpkProfileEditor, EpkPublicLink } from "@/components/epk-components";
-import { getAlbums, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { getAlbums, getCopyItems, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function EpkDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [epk, profile, copyItems, events, albums, songs, epks] = await Promise.all([
+  const [epk, profile, relatedCopyItems, events, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
     getEpkProfile(id),
     getProfile(),
     getRelatedCopyItems("epk_id", id),
@@ -16,6 +17,8 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
     getAlbums(),
     getSongs(),
     getEpkProfiles(),
+    getCopyItems("all"),
+    getRelatedContentCalendarItems("epk_id", id),
   ]);
   if (!epk) notFound();
   const t = translator(profile.locale);
@@ -45,9 +48,16 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
         {canEdit && <RelatedCopyPanel
           title={t("copy.epkCopy")}
           createLabel={t("copy.createEpkCopy")}
-          items={copyItems}
+          items={relatedCopyItems}
           options={{ events, albums, songs, epks }}
           defaults={{ epk_id: epk.id, category: "epk_bio" }}
+        />}
+        {canEdit && <RelatedContentCalendarPanel
+          title={t("contentCalendar.epkPlan")}
+          createLabel={t("contentCalendar.schedulePost")}
+          items={calendarItems}
+          options={{ copyItems, events, albums, songs, epks }}
+          defaults={{ epk_id: epk.id, content_type: "post" }}
         />}
       </aside>
     </div>
