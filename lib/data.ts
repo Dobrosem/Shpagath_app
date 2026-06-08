@@ -6,6 +6,7 @@ import type {
   Album,
   Contact,
   Event,
+  EpkProfile,
   EventSetlist,
   FinanceRecord,
   Material,
@@ -204,6 +205,30 @@ export async function getPromoMaterials(): Promise<PromoMaterial[]> {
     .order("publish_date");
   reportReadError("promo materials", error);
   return (data as PromoMaterial[]) ?? [];
+}
+
+export async function getEpkProfiles(): Promise<EpkProfile[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("epk_profiles")
+    .select("*, media_links:epk_media_links(id)")
+    .order("created_at", { ascending: false });
+  reportReadError("epk profiles", error);
+  return (data as EpkProfile[]) ?? [];
+}
+
+export async function getEpkProfile(id: string): Promise<EpkProfile | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("epk_profiles")
+    .select("*, media_links:epk_media_links(*)")
+    .eq("id", id)
+    .order("order_index", { referencedTable: "epk_media_links" })
+    .maybeSingle();
+  reportReadError("epk profile", error);
+  return (data as EpkProfile | null) ?? null;
 }
 
 export async function getContacts(): Promise<Contact[]> {

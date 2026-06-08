@@ -247,6 +247,7 @@ export async function createTask(
 const albumTypes = new Set(["album", "ep", "single", "live", "demo", "compilation"]);
 const albumStatuses = new Set(["draft", "in_progress", "review", "approved", "released", "archived"]);
 const albumCoverStatuses = new Set(["draft", "review", "approved", "outdated", "archived"]);
+const epkMediaTypes = new Set(["music", "video", "live_video", "interview", "press", "document", "photo_gallery", "other"]);
 
 function albumPayload(formData: FormData, locale: Locale) {
   const title = String(formData.get("title") ?? "").trim();
@@ -1859,6 +1860,224 @@ export async function createTasksFromTemplate(
   revalidatePath("/dashboard");
   revalidatePath("/my");
   return { success: true, error: null, count: rows.length };
+}
+
+function normalizeSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function epkProfilePayload(formData: FormData, locale: Locale) {
+  const title = String(formData.get("title") ?? "").trim();
+  const slug = normalizeSlug(String(formData.get("slug") ?? ""));
+  if (!title) return { error: localized(locale, "Введите название EPK.", "Enter the EPK title."), payload: null };
+  if (!slug) return { error: localized(locale, "Введите URL-safe slug.", "Enter a URL-safe slug."), payload: null };
+  return {
+    error: null,
+    payload: {
+      title,
+      slug,
+      is_public: formData.get("is_public") === "on",
+      short_bio: String(formData.get("short_bio") ?? "").trim() || null,
+      full_bio: String(formData.get("full_bio") ?? "").trim() || null,
+      genre: String(formData.get("genre") ?? "").trim() || null,
+      location: String(formData.get("location") ?? "").trim() || null,
+      booking_email: String(formData.get("booking_email") ?? "").trim() || null,
+      booking_phone: String(formData.get("booking_phone") ?? "").trim() || null,
+      website_url: String(formData.get("website_url") ?? "").trim() || null,
+      vk_url: String(formData.get("vk_url") ?? "").trim() || null,
+      telegram_url: String(formData.get("telegram_url") ?? "").trim() || null,
+      youtube_url: String(formData.get("youtube_url") ?? "").trim() || null,
+      yandex_music_url: String(formData.get("yandex_music_url") ?? "").trim() || null,
+      spotify_url: String(formData.get("spotify_url") ?? "").trim() || null,
+      apple_music_url: String(formData.get("apple_music_url") ?? "").trim() || null,
+      press_quote: String(formData.get("press_quote") ?? "").trim() || null,
+      achievements: String(formData.get("achievements") ?? "").trim() || null,
+      tech_rider_url: String(formData.get("tech_rider_url") ?? "").trim() || null,
+      stage_plot_url: String(formData.get("stage_plot_url") ?? "").trim() || null,
+      logo_url: String(formData.get("logo_url") ?? "").trim() || null,
+      hero_image_url: String(formData.get("hero_image_url") ?? "").trim() || null,
+    },
+  };
+}
+
+function epkMediaPayload(formData: FormData, locale: Locale) {
+  const type = String(formData.get("type") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const orderIndex = Number(formData.get("order_index") ?? 0);
+  if (!epkMediaTypes.has(type)) return { error: localized(locale, "Выберите тип медиа.", "Select the media type."), payload: null };
+  if (!title) return { error: localized(locale, "Введите название медиа-ссылки.", "Enter the media link title."), payload: null };
+  if (!url) return { error: localized(locale, "Введите ссылку.", "Enter the URL."), payload: null };
+  return {
+    error: null,
+    payload: {
+      type,
+      title,
+      url,
+      description: String(formData.get("description") ?? "").trim() || null,
+      order_index: Number.isFinite(orderIndex) ? orderIndex : 0,
+    },
+  };
+}
+
+async function revalidateEpkPaths(supabase: ServerSupabaseClient, epkId: string, slug?: string | null) {
+  revalidatePath("/epk");
+  revalidatePath(`/epk/${epkId}`);
+  const publicSlug = slug ?? (await supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle()).data?.slug;
+  if (publicSlug) revalidatePath(`/public/epk/${publicSlug}`);
+}
+
+export async function createEpkProfile(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = epkProfilePayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("epk_profiles")
+    .insert({ ...result.payload, created_by: session.user.id })
+    .select("id,slug")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  await revalidateEpkPaths(session.supabase, data.id, data.slug);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateEpkProfile(
+  epkId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = epkProfilePayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data: oldProfile } = await session.supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle();
+  const { data, error } = await session.supabase
+    .from("epk_profiles")
+    .update(result.payload)
+    .eq("id", epkId)
+    .select("id,slug")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  await revalidateEpkPaths(session.supabase, data.id, data.slug);
+  if (oldProfile?.slug && oldProfile.slug !== data.slug) revalidatePath(`/public/epk/${oldProfile.slug}`);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function deleteEpkProfile(
+  epkId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data: profile } = await session.supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle();
+  const { error } = await session.supabase.from("epk_profiles").delete().eq("id", epkId);
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  revalidatePath("/epk");
+  if (profile?.slug) revalidatePath(`/public/epk/${profile.slug}`);
+  return { success: true, error: null };
+}
+
+export async function createEpkMediaLink(
+  epkId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = epkMediaPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data, error } = await session.supabase
+    .from("epk_media_links")
+    .insert({ ...result.payload, epk_id: epkId })
+    .select("id")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  await revalidateEpkPaths(session.supabase, epkId);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateEpkMediaLink(
+  epkId: string,
+  linkId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = epkMediaPayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { error } = await session.supabase
+    .from("epk_media_links")
+    .update(result.payload)
+    .eq("id", linkId)
+    .eq("epk_id", epkId);
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  await revalidateEpkPaths(session.supabase, epkId);
+  return { success: true, error: null, id: linkId };
+}
+
+export async function updateEpkMediaLinkForm(epkId: string, linkId: string, formData: FormData) {
+  await updateEpkMediaLink(epkId, linkId, { success: false, error: null }, formData);
+}
+
+export async function deleteEpkMediaLink(
+  epkId: string,
+  linkId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { error } = await session.supabase.from("epk_media_links").delete().eq("id", linkId).eq("epk_id", epkId);
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  await revalidateEpkPaths(session.supabase, epkId);
+  return { success: true, error: null };
+}
+
+export async function deleteEpkMediaLinkForm(epkId: string, linkId: string, formData: FormData) {
+  await deleteEpkMediaLink(epkId, linkId, { success: false, error: null }, formData);
+}
+
+export async function moveEpkMediaLink(epkId: string, linkId: string, direction: -1 | 1): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data: links, error: readError } = await session.supabase
+    .from("epk_media_links")
+    .select("id,order_index")
+    .eq("epk_id", epkId)
+    .order("order_index")
+    .order("created_at");
+  if (readError) return { success: false, error: readableError(readError.message) };
+  const index = (links ?? []).findIndex((link) => link.id === linkId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= (links ?? []).length) return { success: true, error: null };
+  const currentLink = links![index];
+  const targetLink = links![target];
+  const [first, second] = await Promise.all([
+    session.supabase.from("epk_media_links").update({ order_index: targetLink.order_index }).eq("id", currentLink.id),
+    session.supabase.from("epk_media_links").update({ order_index: currentLink.order_index }).eq("id", targetLink.id),
+  ]);
+  const error = first.error ?? second.error;
+  if (error) return { success: false, error: readableError(error.message) };
+  await revalidateEpkPaths(session.supabase, epkId);
+  return { success: true, error: null };
 }
 
 export async function signIn(formData: FormData) {

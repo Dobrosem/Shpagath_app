@@ -1,8 +1,8 @@
 # Saphath Cloud
 
 Закрытый рабочий портал Saphath для проектов, задач, песен, материалов,
-резервных копий, альбомов, концертов, сетлистов, боевых листов и упаковочных
-листов.
+резервных копий, альбомов, концертов, сетлистов, боевых листов, EPK и
+упаковочных листов.
 
 ## Stack
 
@@ -49,6 +49,7 @@ supabase/migrations/004_event_timing_and_setlist_cleanup.sql
 supabase/migrations/005_song_edit_cover_and_material_crud.sql
 supabase/migrations/006_event_posters_and_task_crud.sql
 supabase/migrations/007_albums_releases.sql
+supabase/migrations/008_epk_mvp.sql
 ```
 
 After migrations, create users in Supabase Authentication. Public signup is not
@@ -76,6 +77,7 @@ Create these buckets manually in Supabase Storage before using uploads:
 song-covers
 event-posters
 album-covers
+epk-assets
 ```
 
 Bucket usage:
@@ -83,6 +85,7 @@ Bucket usage:
 - `song-covers`: song cover images.
 - `event-posters`: concert poster images.
 - `album-covers`: album and release cover images.
+- `epk-assets`: EPK logos, hero images and press assets.
 
 Recommended access:
 
@@ -91,7 +94,10 @@ Recommended access:
   resolve the object path.
 - Manual external URLs are also supported as a fallback.
 - Storage RLS policies for authenticated read/upload/update/delete are defined
-  in migrations `005`, `006`, and `007`.
+  in migrations `005`, `006`, `007`, and `008`.
+- Public EPK pages can show public bucket URLs or external/manual URLs. Keep the
+  bucket private unless you intentionally expose selected files through public
+  URLs or signed URLs.
 
 The app does not create buckets from client-side code. If a bucket or policy is
 missing, upload actions return a user-facing error instead of silently
@@ -100,7 +106,9 @@ succeeding.
 ## Auth And Access
 
 Middleware protects all routes except `/login` and static assets. Unauthenticated
-users are redirected to `/login?next=...`.
+users are redirected to `/login?next=...`. Public EPK pages at
+`/public/epk/[slug]` are not behind auth, but Supabase RLS only returns profiles
+where `is_public = true`.
 
 Primary roles:
 
@@ -136,6 +144,25 @@ PDF requirements:
 PDF output is A4 portrait, protected by auth, uses DejaVu TTF for Cyrillic text,
 and includes the Saphath logo when the file exists.
 
+## Public EPK
+
+Workspace routes:
+
+```text
+/epk
+/epk/[id]
+```
+
+Public route:
+
+```text
+/public/epk/[slug]
+```
+
+The public route reads real Supabase data and returns content only for EPK
+profiles with `is_public = true`. Draft/private EPK profiles are hidden by RLS
+and render as not found.
+
 ## Project Structure
 
 ```text
@@ -143,6 +170,7 @@ app/
   (workspace)/        protected workspace pages
   actions.ts          Supabase Server Actions
   events/[id]/...     print/PDF routes outside the sidebar shell
+  public/epk/[slug]   public EPK page gated by is_public
 components/           shell, cards, editors and UI controls
 lib/
   supabase/           server/browser Supabase clients

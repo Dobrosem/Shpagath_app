@@ -7,9 +7,10 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 export async function middleware(request: NextRequest) {
   const { url, anonKey, isConfigured } = getSupabaseEnv();
   const isLogin = request.nextUrl.pathname === "/login";
+  const isPublicEpk = request.nextUrl.pathname.startsWith("/public/epk/");
 
   if (!isConfigured || !url || !anonKey) {
-    if (isLogin) return NextResponse.next();
+    if (isLogin || isPublicEpk) return NextResponse.next();
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("error", "supabase_not_configured");
@@ -34,7 +35,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !isLogin) {
+  if (!user && !isLogin && !isPublicEpk) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", request.nextUrl.pathname);

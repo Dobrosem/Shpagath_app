@@ -179,6 +179,57 @@ export interface PromoMaterial {
   project_id?: string | null;
 }
 
+export type EpkMediaType =
+  | "music"
+  | "video"
+  | "live_video"
+  | "interview"
+  | "press"
+  | "document"
+  | "photo_gallery"
+  | "other";
+
+export interface EpkMediaLink {
+  id: string;
+  epk_id: string;
+  type: EpkMediaType;
+  title: string;
+  url: string;
+  description?: string | null;
+  order_index: number;
+  created_at?: string;
+}
+
+export interface EpkProfile {
+  id: string;
+  slug: string;
+  title: string;
+  short_bio?: string | null;
+  full_bio?: string | null;
+  genre?: string | null;
+  location?: string | null;
+  booking_email?: string | null;
+  booking_phone?: string | null;
+  website_url?: string | null;
+  vk_url?: string | null;
+  telegram_url?: string | null;
+  youtube_url?: string | null;
+  yandex_music_url?: string | null;
+  spotify_url?: string | null;
+  apple_music_url?: string | null;
+  press_quote?: string | null;
+  achievements?: string | null;
+  tech_rider_url?: string | null;
+  stage_plot_url?: string | null;
+  logo_url?: string | null;
+  hero_image_url?: string | null;
+  is_public: boolean;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  media_links?: EpkMediaLink[];
+}
+
 export interface TaskTemplateItem {
   id: string;
   template_id: string;
