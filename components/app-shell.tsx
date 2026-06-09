@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -85,10 +86,20 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Mark() {
-  const { locale } = useI18n();
-  return <Link href="/dashboard" className="flex items-center gap-3">
-    <div className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-sm border border-white/15 bg-zinc-950 font-display text-xl text-white after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-ember">S</div>
-    <div><p className="font-display text-base font-semibold uppercase tracking-[.22em] text-zinc-100">Saphath</p><p className="text-[8px] uppercase tracking-[.28em] text-zinc-600">{locale === "en" ? "Workspace" : "Рабочая система"}</p></div>
+  const [logoFailed, setLogoFailed] = useState(false);
+  return <Link href="/dashboard" className="inline-flex max-w-full flex-col items-center gap-0">
+    {logoFailed
+      ? <span className="font-display text-xl font-semibold uppercase tracking-[.22em] text-zinc-100">Saphath</span>
+      : <Image
+        src="/branding/saphath-logo.png"
+        alt="Saphath"
+        width={2048}
+        height={1041}
+        priority
+        onError={() => setLogoFailed(true)}
+        className="h-auto w-40 max-w-full object-contain brightness-0 invert"
+      />}
+    <span className="-mt-4 w-full text-center text-[8px] uppercase leading-none tracking-[.28em] text-zinc-600">Workspace</span>
   </Link>;
 }
 
