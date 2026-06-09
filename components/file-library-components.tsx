@@ -334,23 +334,25 @@ function SharedTechRiderRow({ file }: { file: FileRecord }) {
   }
 
   return <div className="rounded-lg border border-white/[.06] p-3">
-    <div className="flex items-center gap-3">
+    <div className="flex items-start gap-3">
       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[.035]"><FileIcon file={file} /></div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-200">{file.title}</p>
+        <p className="break-words text-sm text-zinc-200">{file.title}</p>
         <p className="mt-1 text-[10px] uppercase tracking-[.14em] text-zinc-700">{translateEnum(locale, file.status)} · {formatBytes(file.size_bytes)}</p>
       </div>
-      {url && <a href={url} target="_blank" rel="noreferrer" className="button-secondary min-h-9 px-3 text-xs"><ExternalLink size={13} />{t("files.open")}</a>}
-      <button type="button" className="button-secondary min-h-9 px-3 text-xs" disabled={archiving || replacing} onClick={archive}>
+    </div>
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {url && <a href={url} target="_blank" rel="noreferrer" className="button-secondary min-h-9 w-full px-3 text-xs"><ExternalLink size={13} />{t("files.open")}</a>}
+      <button type="button" className="button-secondary min-h-9 w-full px-3 text-xs" disabled={archiving || replacing} onClick={archive}>
         {archiving ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}{t("files.archive")}
       </button>
     </div>
-    <form action={replaceAction} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+    <form action={replaceAction} className="mt-4 grid gap-2 border-t border-white/[.06] pt-3">
       <input type="hidden" name="locale" value={locale} />
-      <label><span className="label">{t("files.replace")}</span><input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.svg,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,image/png,image/jpeg,image/webp,image/svg+xml,text/plain" className="field file:mr-4 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:text-zinc-200" /></label>
-      <button className="button-secondary min-h-10" disabled={replacing || archiving}>{replacing && <Loader2 size={14} className="animate-spin" />}<Upload size={14} />{t("files.replace")}</button>
-      {(replaceState.error || archiveError) && <p className="text-xs text-red-300 sm:col-span-2">{replaceState.error || archiveError}</p>}
-      {replaceState.success && <p className="text-xs text-emerald-300 sm:col-span-2">{t("common.save")}</p>}
+      <label className="min-w-0"><span className="label">{t("files.replace")}</span><input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.svg,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,image/png,image/jpeg,image/webp,image/svg+xml,text/plain" className="field w-full file:mr-4 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:text-zinc-200" /></label>
+      <button className="button-secondary min-h-10 w-full" disabled={replacing || archiving}>{replacing && <Loader2 size={14} className="animate-spin" />}<Upload size={14} />{t("files.replace")}</button>
+      {(replaceState.error || archiveError) && <p className="text-xs text-red-300">{replaceState.error || archiveError}</p>}
+      {replaceState.success && <p className="text-xs text-emerald-300">{t("common.save")}</p>}
     </form>
   </div>;
 }
