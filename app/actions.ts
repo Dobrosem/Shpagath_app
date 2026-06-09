@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionState, ContentChannel, ContentStatus, ContentType, CopyCategory, CopyChannel, CopyStatus, Locale } from "@/lib/types";
+import type { ActionState, ContentChannel, ContentStatus, ContentType, CopyCategory, CopyChannel, CopyStatus, FileStatus, FileType, Locale } from "@/lib/types";
 
 const allowedTables = [
   "projects",
@@ -254,6 +254,24 @@ const copyStatuses = new Set(["draft", "review", "approved", "archived"]);
 const contentChannels = new Set(["vk", "telegram", "instagram", "youtube", "website", "email", "ads", "press", "internal", "other"]);
 const contentTypes = new Set(["post", "story", "reels", "shorts", "video", "announcement", "reminder", "press_release", "ad", "email", "article", "other"]);
 const contentStatuses = new Set(["idea", "draft", "ready", "scheduled", "published", "cancelled", "archived"]);
+const fileTypes = new Set(["tech_rider", "stage_plot", "light_timing", "video_timing", "press_photo", "logo", "artwork", "lyrics", "guitar_tab", "bass_tab", "orchestral_score", "orchestral_parts", "backing_track", "click_track", "stems", "reaper_project", "contract", "invoice", "document", "image", "audio", "video", "other"]);
+const fileStatuses = new Set(["active", "draft", "review", "approved", "archived"]);
+const fileUploadMaxBytes = 25 * 1024 * 1024;
+const fileUploadMimeTypes = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/svg+xml",
+  "text/plain",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+const externalOnlyFileTypes = new Set(["backing_track", "click_track", "stems", "reaper_project", "audio", "video"]);
 
 function albumPayload(formData: FormData, locale: Locale) {
   const title = String(formData.get("title") ?? "").trim();
@@ -2426,6 +2444,389 @@ export async function deleteContentCalendarItem(itemId: string, locale: Locale):
   }
   revalidateContentCalendarPaths({ id: itemId, ...current });
   return { success: true, error: null, id: itemId };
+}
+
+type FileRelationPayload = {
+  event_id?: string | null;
+  album_id?: string | null;
+  song_id?: string | null;
+  epk_id?: string | null;
+  copy_item_id?: string | null;
+  content_calendar_item_id?: string | null;
+};
+
+function relationValue(formData: FormData, key: keyof FileRelationPayload) {
+  return String(formData.get(key) ?? "").trim() || null;
+}
+
+function validateExternalUrl(value: string, locale: Locale) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") return null;
+  } catch {
+    // handled below
+  }
+  return localized(locale, "Укажите корректную внешнюю ссылку.", "Enter a valid external URL.");
+}
+
+function safeStorageFileName(name: string) {
+  const base = name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return base || "file";
+}
+
+function fileStorageFolder(relation: FileRelationPayload) {
+  if (relation.event_id) return `event-${relation.event_id}`;
+  if (relation.album_id) return `album-${relation.album_id}`;
+  if (relation.song_id) return `song-${relation.song_id}`;
+  if (relation.epk_id) return `epk-${relation.epk_id}`;
+  if (relation.copy_item_id) return `copy-${relation.copy_item_id}`;
+  if (relation.content_calendar_item_id) return `content-${relation.content_calendar_item_id}`;
+  return "general";
+}
+
+function filePayload(formData: FormData, locale: Locale) {
+  const title = String(formData.get("title") ?? "").trim();
+  const fileType = String(formData.get("file_type") ?? "other").trim() as FileType;
+  const status = String(formData.get("status") ?? "active").trim() as FileStatus;
+  const externalUrl = String(formData.get("external_url") ?? "").trim();
+  if (!title) return { error: localized(locale, "Введите название файла.", "Enter the file title."), payload: null };
+  if (!fileTypes.has(fileType)) return { error: localized(locale, "Выберите тип файла.", "Select the file type."), payload: null };
+  if (!fileStatuses.has(status)) return { error: localized(locale, "Выберите статус файла.", "Select the file status."), payload: null };
+  const urlError = validateExternalUrl(externalUrl, locale);
+  if (urlError) return { error: urlError, payload: null };
+  const relation = {
+    event_id: relationValue(formData, "event_id"),
+    album_id: relationValue(formData, "album_id"),
+    song_id: relationValue(formData, "song_id"),
+    epk_id: relationValue(formData, "epk_id"),
+    copy_item_id: relationValue(formData, "copy_item_id"),
+    content_calendar_item_id: relationValue(formData, "content_calendar_item_id"),
+  };
+  return {
+    error: null,
+    payload: {
+      title,
+      description: String(formData.get("description") ?? "").trim() || null,
+      file_type: fileType,
+      status,
+      is_public: formData.get("is_public") === "on",
+      external_url: externalUrl || null,
+      ...relation,
+    },
+  };
+}
+
+function revalidateFilePaths(file?: ({ id?: string | null } & FileRelationPayload) | null) {
+  revalidatePath("/files");
+  if (file?.id) revalidatePath(`/files/${file.id}`);
+  if (file?.event_id) revalidatePath(`/events/${file.event_id}`);
+  if (file?.album_id) revalidatePath(`/albums/${file.album_id}`);
+  if (file?.song_id) revalidatePath(`/songs/${file.song_id}`);
+  if (file?.epk_id) revalidatePath(`/epk/${file.epk_id}`);
+  if (file?.copy_item_id) revalidatePath(`/copy/${file.copy_item_id}`);
+  if (file?.content_calendar_item_id) revalidatePath(`/content-calendar/${file.content_calendar_item_id}`);
+}
+
+function getSelectedFile(formData: FormData) {
+  const value = formData.get("file");
+  return value instanceof File && value.size > 0 ? value : null;
+}
+
+async function uploadLibraryFile(
+  supabase: ServerSupabaseClient,
+  file: File,
+  relation: FileRelationPayload,
+  locale: Locale,
+  fileType?: FileType,
+) {
+  if (file.size > fileUploadMaxBytes) {
+    return {
+      error: localized(locale, "Файл слишком большой. Для тяжёлых файлов используйте внешнюю ссылку.", "File is too large. Use an external link for large files."),
+      data: null,
+    };
+  }
+  if (fileType && externalOnlyFileTypes.has(fileType)) {
+    return {
+      error: localized(locale, "Этот тип файла загружается только внешней ссылкой.", "This file type can only be added as an external link."),
+      data: null,
+    };
+  }
+  if (!fileUploadMimeTypes.has(file.type || "")) {
+    return {
+      error: localized(
+        locale,
+        "Тяжёлые аудио, видео, stems и проекты лучше хранить на Яндекс Диске и вставлять внешнюю ссылку.",
+        "Large audio, video, stems and project files should be stored externally and linked here.",
+      ),
+      data: null,
+    };
+  }
+  const storagePath = `${fileStorageFolder(relation)}/${Date.now()}-${safeStorageFileName(file.name)}`;
+  const { error } = await supabase.storage
+    .from("file-library")
+    .upload(storagePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (error) {
+    return {
+      error: localizedReadableError(locale, error.message),
+      data: null,
+    };
+  }
+  return {
+    error: null,
+    data: {
+      bucket: "file-library",
+      storage_path: storagePath,
+      public_url: null,
+      external_url: null,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+    },
+  };
+}
+
+export async function createFileRecord(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = filePayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const file = getSelectedFile(formData);
+  let storagePayload: Record<string, unknown> = {
+    bucket: "file-library",
+    storage_path: null,
+    public_url: null,
+    mime_type: null,
+    size_bytes: null,
+  };
+  if (file) {
+    const upload = await uploadLibraryFile(session.supabase, file, result.payload, locale, result.payload.file_type);
+    if (upload.error || !upload.data) return { success: false, error: upload.error };
+    storagePayload = upload.data;
+  } else if (!result.payload.external_url) {
+    return {
+      success: false,
+      error: localized(locale, "Загрузите файл или укажите внешнюю ссылку.", "Upload a file or enter an external URL."),
+    };
+  }
+
+  const { data, error } = await session.supabase
+    .from("files")
+    .insert({
+      ...result.payload,
+      ...storagePayload,
+      created_by: session.user.id,
+    })
+    .select("id,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .single();
+  if (error) return { success: false, error: localizedReadableError(locale, error.message) };
+  revalidateFilePaths(data);
+  return { success: true, error: null, id: data.id };
+}
+
+export async function updateFileRecord(
+  fileId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const result = filePayload(formData, locale);
+  if (result.error || !result.payload) return { success: false, error: result.error };
+  const { data: current } = await session.supabase
+    .from("files")
+    .select("id,storage_path,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .eq("id", fileId)
+    .maybeSingle();
+  if (!current) {
+    return { success: false, error: localized(locale, "Файл не найден или нет прав на редактирование.", "File not found or access denied.") };
+  }
+  if (!current.storage_path && !result.payload.external_url) {
+    return {
+      success: false,
+      error: localized(locale, "Для файла без загрузки нужна внешняя ссылка.", "A file without uploaded storage needs an external URL."),
+    };
+  }
+  const { data, error } = await session.supabase
+    .from("files")
+    .update(result.payload)
+    .eq("id", fileId)
+    .select("id,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Файл не найден или нет прав на редактирование.", "File not found or access denied."),
+    };
+  }
+  revalidateFilePaths(data);
+  revalidateFilePaths(current);
+  return { success: true, error: null, id: fileId };
+}
+
+export async function replaceFileInLibrary(
+  fileId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const file = getSelectedFile(formData);
+  if (!file) return { success: false, error: localized(locale, "Выберите файл для замены.", "Select a replacement file.") };
+  const { data: current, error: readError } = await session.supabase
+    .from("files")
+    .select("id,bucket,storage_path,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .eq("id", fileId)
+    .maybeSingle();
+  if (readError || !current) {
+    return {
+      success: false,
+      error: readError
+        ? localizedReadableError(locale, readError.message)
+        : localized(locale, "Файл не найден или нет прав на редактирование.", "File not found or access denied."),
+    };
+  }
+  const { data: fileMeta } = await session.supabase
+    .from("files")
+    .select("file_type")
+    .eq("id", fileId)
+    .maybeSingle();
+  const upload = await uploadLibraryFile(session.supabase, file, current, locale, fileMeta?.file_type as FileType | undefined);
+  if (upload.error || !upload.data) return { success: false, error: upload.error };
+  const { data, error } = await session.supabase
+    .from("files")
+    .update(upload.data)
+    .eq("id", fileId)
+    .select("id,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .maybeSingle();
+  if (error || !data) return { success: false, error: error ? localizedReadableError(locale, error.message) : localized(locale, "Файл не обновлён.", "File was not updated.") };
+  if (current.storage_path) {
+    const { error: removeError } = await session.supabase.storage
+      .from(current.bucket || "file-library")
+      .remove([current.storage_path]);
+    if (removeError) console.error("Supabase remove old file object error:", removeError);
+  }
+  revalidateFilePaths(data);
+  return { success: true, error: null, id: fileId };
+}
+
+export async function archiveFileRecord(fileId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data, error } = await session.supabase
+    .from("files")
+    .update({ status: "archived" satisfies FileStatus })
+    .eq("id", fileId)
+    .select("id,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Файл не найден или нет прав на редактирование.", "File not found or access denied."),
+    };
+  }
+  revalidateFilePaths(data);
+  return { success: true, error: null, id: fileId };
+}
+
+export async function deleteFileRecord(fileId: string, locale: Locale): Promise<ActionState> {
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const { data: current, error: readError } = await session.supabase
+    .from("files")
+    .select("id,bucket,storage_path,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")
+    .eq("id", fileId)
+    .maybeSingle();
+  if (readError || !current) {
+    return {
+      success: false,
+      error: readError
+        ? localizedReadableError(locale, readError.message)
+        : localized(locale, "Файл не найден или нет прав на удаление.", "File not found or access denied."),
+    };
+  }
+  if (current.storage_path) {
+    const { error: removeError } = await session.supabase.storage
+      .from(current.bucket || "file-library")
+      .remove([current.storage_path]);
+    if (removeError) {
+      return { success: false, error: localizedReadableError(locale, removeError.message) };
+    }
+  }
+  const { data: deleted, error } = await session.supabase
+    .from("files")
+    .delete()
+    .eq("id", fileId)
+    .select("id")
+    .maybeSingle();
+  if (error || !deleted) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Файл не удалён. Проверьте права доступа и RLS-политику.", "File was not deleted. Check access rights and the RLS policy."),
+    };
+  }
+  revalidateFilePaths(current);
+  return { success: true, error: null, id: fileId };
+}
+
+export async function assignEventTechRider(
+  eventId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const fileId = String(formData.get("tech_rider_file_id") ?? "").trim() || null;
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+
+  if (fileId) {
+    const { data: file, error: fileError } = await session.supabase
+      .from("files")
+      .select("id,file_type,event_id,status")
+      .eq("id", fileId)
+      .maybeSingle();
+    if (fileError || !file || file.file_type !== "tech_rider" || file.event_id || file.status === "archived") {
+      return {
+        success: false,
+        error: fileError
+          ? localizedReadableError(locale, fileError.message)
+          : localized(locale, "Выберите доступный общий технический райдер.", "Select an available shared technical rider."),
+      };
+    }
+  }
+
+  const { data, error } = await session.supabase
+    .from("events")
+    .update({ tech_rider_file_id: fileId })
+    .eq("id", eventId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    return {
+      success: false,
+      error: error
+        ? localizedReadableError(locale, error.message)
+        : localized(locale, "Концерт не найден или нет прав на редактирование.", "Event not found or access denied."),
+    };
+  }
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/battle-sheet`);
+  revalidatePath("/dashboard");
+  return { success: true, error: null, id: eventId };
 }
 
 export async function signIn(formData: FormData) {

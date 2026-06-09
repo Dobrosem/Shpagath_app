@@ -7,23 +7,26 @@ import {
 } from "@/components/album-components";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
+import { RelatedFilesPanel } from "@/components/file-library-components";
 import { StatusBadge } from "@/components/ui";
-import { getAlbum, getAlbums, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { getAlbum, getAlbums, getContentCalendarItems, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { formatDate, getAlbumCoverUrl } from "@/lib/utils";
 
 export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [album, songs, profile, relatedCopyItems, events, albums, epks, copyItems, calendarItems] = await Promise.all([
+  const [album, songs, profile, relatedCopyItems, relatedFiles, events, albums, epks, copyItems, calendarItems, contentItems] = await Promise.all([
     getAlbum(id),
     getSongs(),
     getProfile(),
     getRelatedCopyItems("album_id", id),
+    getRelatedFiles("album_id", id),
     getEvents(),
     getAlbums(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("album_id", id),
+    getContentCalendarItems(),
   ]);
   if (!album) notFound();
   const t = translator(profile.locale);
@@ -89,6 +92,15 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
           items={calendarItems}
           options={{ copyItems, events, albums, songs, epks }}
           defaults={{ album_id: album.id, content_type: "announcement" }}
+        />
+      </div>
+      <div className="mt-5">
+        <RelatedFilesPanel
+          title={t("files.albumFiles")}
+          items={relatedFiles}
+          options={{ events, albums, songs, epks, copyItems, contentItems }}
+          defaults={{ album_id: album.id, file_type: "artwork" }}
+          allowedTypes={["artwork", "press_photo", "document", "image", "lyrics"]}
         />
       </div>
     </div>}

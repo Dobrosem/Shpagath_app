@@ -11,6 +11,7 @@ import type {
   Event,
   EpkProfile,
   EventSetlist,
+  FileRecord,
   FinanceRecord,
   Material,
   MaterialBackup,
@@ -25,9 +26,31 @@ import type {
   TaskTemplate,
 } from "./types";
 
-function reportReadError(entity: string, error: { message: string } | null) {
-  if (error) console.error(`Supabase read ${entity} error:`, error);
+function reportReadError(entity: string, error: unknown) {
+  if (!error) return;
+  if (typeof error === "object") {
+    const typedError = error as {
+      code?: string | null;
+      details?: string | null;
+      hint?: string | null;
+      message?: string | null;
+      name?: string | null;
+      status?: number | null;
+    };
+    console.error(`Supabase read ${entity} error:`, {
+      code: typedError.code ?? null,
+      details: typedError.details ?? null,
+      hint: typedError.hint ?? null,
+      message: typedError.message ?? null,
+      name: typedError.name ?? null,
+      status: typedError.status ?? null,
+    });
+    return;
+  }
+  console.error(`Supabase read ${entity} error:`, error);
 }
+
+type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
 export async function getProfile(): Promise<Profile> {
   const supabase = await createClient();
@@ -310,6 +333,101 @@ export async function getRelatedContentCalendarItems(relation: "copy_item_id" | 
   return (data as ContentCalendarItem[]) ?? [];
 }
 
+const fileRecordSelect = "*";
+const documentFileTypes = ["document", "contract", "invoice", "tech_rider", "stage_plot", "light_timing", "video_timing", "lyrics", "guitar_tab", "bass_tab", "orchestral_score", "orchestral_parts", "reaper_project"];
+const imageFileTypes = ["image", "press_photo", "logo", "artwork"];
+const audioFileTypes = ["audio", "backing_track", "click_track", "stems"];
+
+async function withFileDisplayUrls(supabase: ServerSupabaseClient, records: FileRecord[]): Promise<FileRecord[]> {
+  return Promise.all(records.map(async (record) => {
+    let displayUrl = record.public_url || record.external_url || null;
+    if (record.storage_path) {
+      try {
+        displayUrl = await getStorageDisplayUrl(supabase, record.bucket || "file-library", record.storage_path) ?? displayUrl;
+      } catch (error) {
+        reportReadError("file signed URL", error);
+      }
+    }
+    return {
+      ...record,
+      display_url: displayUrl,
+    };
+  }));
+}
+
+export async function getFileRecords(filter: "all" | "documents" | "images" | "audio" | "archived" = "all"): Promise<FileRecord[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  let query = supabase
+    .from("files")
+    .select(fileRecordSelect)
+    .order("updated_at", { ascending: false });
+  if (filter === "documents") query = query.in("file_type", documentFileTypes).neq("status", "archived");
+  if (filter === "images") query = query.in("file_type", imageFileTypes).neq("status", "archived");
+  if (filter === "audio") query = query.in("file_type", audioFileTypes).neq("status", "archived");
+  if (filter === "archived") query = query.eq("status", "archived");
+  if (filter === "all") query = query.neq("status", "archived");
+  const { data, error } = await query;
+  if (error) {
+    reportReadError("files", error);
+    return [];
+  }
+  return withFileDisplayUrls(supabase, (data as FileRecord[]) ?? []);
+}
+
+export async function getFileRecord(id: string): Promise<FileRecord | null> {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("files")
+    .select(fileRecordSelect)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    reportReadError("file", error);
+    return null;
+  }
+  if (!data) return null;
+  const [file] = await withFileDisplayUrls(supabase, [data as FileRecord]);
+  return file;
+}
+
+export async function getRelatedFiles(
+  relation: "event_id" | "album_id" | "song_id" | "epk_id" | "copy_item_id" | "content_calendar_item_id",
+  id: string,
+): Promise<FileRecord[]> {
+  const supabase = await createClient();
+  if (!supabase || !id) return [];
+  const { data, error } = await supabase
+    .from("files")
+    .select(fileRecordSelect)
+    .eq(relation, id)
+    .order("updated_at", { ascending: false })
+    .limit(5);
+  if (error) {
+    reportReadError("related files", error);
+    return [];
+  }
+  return withFileDisplayUrls(supabase, (data as FileRecord[]) ?? []);
+}
+
+export async function getSharedTechRiderFiles(): Promise<FileRecord[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("files")
+    .select(fileRecordSelect)
+    .eq("file_type", "tech_rider")
+    .is("event_id", null)
+    .in("status", ["active", "approved"])
+    .order("updated_at", { ascending: false });
+  if (error) {
+    reportReadError("shared tech rider files", error);
+    return [];
+  }
+  return withFileDisplayUrls(supabase, (data as FileRecord[]) ?? []);
+}
+
 export async function getContacts(): Promise<Contact[]> {
   const supabase = await createClient();
   if (!supabase) return [];
@@ -371,7 +489,7 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
   let eventQuery = supabase.from("events").select("*").order("starts_at");
   if (eventId) eventQuery = eventQuery.eq("id", eventId);
 
-  const [tasksResult, eventsResult, promoResult, materialsResult, backupsResult, setlistsResult] =
+  const [tasksResult, eventsResult, promoResult, materialsResult, backupsResult, setlistsResult, riderFilesResult] =
     await Promise.all([
       supabase.from("tasks").select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)"),
       eventQuery,
@@ -379,6 +497,7 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
       supabase.from("song_materials").select("*, song:songs(title)"),
       supabase.from("material_backups").select("*"),
       supabase.from("setlists").select("event_id, setlist_items(count)"),
+      supabase.from("files").select("event_id").eq("file_type", "tech_rider"),
     ]);
 
   reportReadError("red zone tasks", tasksResult.error);
@@ -387,6 +506,7 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
   reportReadError("red zone materials", materialsResult.error);
   reportReadError("red zone backups", backupsResult.error);
   reportReadError("red zone setlists", setlistsResult.error);
+  reportReadError("red zone rider files", riderFilesResult.error);
 
   const selectedEvents = (eventsResult.data as Event[]) ?? [];
   const selectedEventIds = new Set(selectedEvents.map((event) => event.id));
@@ -408,6 +528,14 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
         .filter((setlist) => (setlist.setlist_items?.[0]?.count ?? 0) > 0)
         .map((setlist) => setlist.event_id as string)
         .filter((id) => !eventId || selectedEventIds.has(id)),
+    ),
+    riderFileEventIds: new Set(
+      (riderFilesResult.data ?? [])
+        .map((file) => file.event_id as string | null)
+        .filter((id): id is string => {
+          if (!id) return false;
+          return !eventId || selectedEventIds.has(id);
+        }),
     ),
   });
 }

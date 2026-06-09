@@ -4,21 +4,25 @@ import { notFound } from "next/navigation";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { EpkMediaManager, EpkProfileEditor, EpkPublicLink } from "@/components/epk-components";
-import { getAlbums, getCopyItems, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { RelatedFilesPanel, SharedDocumentsPanel } from "@/components/file-library-components";
+import { getAlbums, getContentCalendarItems, getCopyItems, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSharedTechRiderFiles, getSongs } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function EpkDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [epk, profile, relatedCopyItems, events, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
+  const [epk, profile, relatedCopyItems, relatedFiles, sharedTechRiders, events, albums, songs, epks, copyItems, calendarItems, contentItems] = await Promise.all([
     getEpkProfile(id),
     getProfile(),
     getRelatedCopyItems("epk_id", id),
+    getRelatedFiles("epk_id", id),
+    getSharedTechRiderFiles(),
     getEvents(),
     getAlbums(),
     getSongs(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("epk_id", id),
+    getContentCalendarItems(),
   ]);
   if (!epk) notFound();
   const t = translator(profile.locale);
@@ -45,6 +49,12 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
       </div>
       <aside className="space-y-5">
         <EpkPublicLink epk={epk} />
+        {canEdit && <SharedDocumentsPanel
+          techRiders={sharedTechRiders}
+          options={{ events, albums, songs, epks, copyItems, contentItems }}
+          epkId={epk.id}
+          canCreate={canEdit}
+        />}
         {canEdit && <RelatedCopyPanel
           title={t("copy.epkCopy")}
           createLabel={t("copy.createEpkCopy")}
@@ -58,6 +68,13 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
           items={calendarItems}
           options={{ copyItems, events, albums, songs, epks }}
           defaults={{ epk_id: epk.id, content_type: "post" }}
+        />}
+        {canEdit && <RelatedFilesPanel
+          title={t("files.epkFiles")}
+          items={relatedFiles}
+          options={{ events, albums, songs, epks, copyItems, contentItems }}
+          defaults={{ epk_id: epk.id, file_type: "press_photo" }}
+          allowedTypes={["logo", "press_photo", "document", "image"]}
         />}
       </aside>
     </div>

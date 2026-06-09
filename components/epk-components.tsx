@@ -71,6 +71,7 @@ export function EpkCreateButton() {
             <input type="checkbox" name="is_public" className="h-4 w-4 accent-orange-500" />
             {t("epk.publicAccess")}
           </label>
+          <p className="rounded-lg border border-white/[.06] bg-white/[.025] p-3 text-xs leading-5 text-zinc-500">{t("epk.createDocumentsHint")}</p>
           {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><AlertCircle size={15} />{state.error}</div>}
           <div className="flex justify-end gap-2">
             <button type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>

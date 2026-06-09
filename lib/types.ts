@@ -24,6 +24,31 @@ export type CopyStatus = "draft" | "review" | "approved" | "archived";
 export type ContentChannel = CopyChannel;
 export type ContentType = "post" | "story" | "reels" | "shorts" | "video" | "announcement" | "reminder" | "press_release" | "ad" | "email" | "article" | "other";
 export type ContentStatus = "idea" | "draft" | "ready" | "scheduled" | "published" | "cancelled" | "archived";
+export type FileType =
+  | "tech_rider"
+  | "stage_plot"
+  | "light_timing"
+  | "video_timing"
+  | "press_photo"
+  | "logo"
+  | "artwork"
+  | "lyrics"
+  | "guitar_tab"
+  | "bass_tab"
+  | "orchestral_score"
+  | "orchestral_parts"
+  | "backing_track"
+  | "click_track"
+  | "stems"
+  | "reaper_project"
+  | "contract"
+  | "invoice"
+  | "document"
+  | "image"
+  | "audio"
+  | "video"
+  | "other";
+export type FileStatus = "active" | "draft" | "review" | "approved" | "archived";
 
 export interface Profile {
   id: string;
@@ -129,6 +154,7 @@ export interface Event {
   light_engineer_contact?: string | null;
   emergency_notes?: string | null;
   ticket_url?: string | null;
+  tech_rider_file_id?: string | null;
   tech_rider_url?: string | null;
   stage_plot_url?: string | null;
   light_timing_url?: string | null;
@@ -307,6 +333,37 @@ export interface ContentCalendarItem {
   album?: Pick<Album, "id" | "title"> | null;
   song?: Pick<Song, "id" | "title"> | null;
   epk?: Pick<EpkProfile, "id" | "title" | "slug"> | null;
+}
+
+export interface FileRecord {
+  id: string;
+  title: string;
+  description?: string | null;
+  file_type: FileType;
+  bucket: string;
+  storage_path?: string | null;
+  public_url?: string | null;
+  external_url?: string | null;
+  display_url?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  status: FileStatus;
+  is_public: boolean;
+  event_id?: string | null;
+  album_id?: string | null;
+  song_id?: string | null;
+  epk_id?: string | null;
+  copy_item_id?: string | null;
+  content_calendar_item_id?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  event?: Pick<Event, "id" | "title"> | null;
+  album?: Pick<Album, "id" | "title"> | null;
+  song?: Pick<Song, "id" | "title"> | null;
+  epk?: Pick<EpkProfile, "id" | "title" | "slug"> | null;
+  copy_item?: Pick<CopyItem, "id" | "title"> | null;
+  content_calendar_item?: Pick<ContentCalendarItem, "id" | "title"> | null;
 }
 
 export interface TaskTemplateItem {

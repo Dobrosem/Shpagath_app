@@ -2,7 +2,7 @@
 
 Закрытый рабочий портал Saphath для проектов, задач, песен, материалов,
 резервных копий, альбомов, концертов, сетлистов, боевых листов, EPK,
-библиотеки текстов и упаковочных листов.
+библиотеки текстов, контент-календаря, файлов и упаковочных листов.
 
 ## Stack
 
@@ -53,6 +53,8 @@ supabase/migrations/008_epk_mvp.sql
 supabase/migrations/009_copy_library.sql
 supabase/migrations/010_copy_delete_policy_fix.sql
 supabase/migrations/011_content_calendar.sql
+supabase/migrations/012_file_library.sql
+supabase/migrations/013_event_shared_tech_rider.sql
 ```
 
 After migrations, create users in Supabase Authentication. Public signup is not
@@ -81,6 +83,7 @@ song-covers
 event-posters
 album-covers
 epk-assets
+file-library
 ```
 
 Bucket usage:
@@ -89,6 +92,8 @@ Bucket usage:
 - `event-posters`: concert poster images.
 - `album-covers`: album and release cover images.
 - `epk-assets`: EPK logos, hero images and press assets.
+- `file-library`: internal workspace documents, media assets, riders, tabs,
+  contracts and other working files.
 
 Recommended access:
 
@@ -97,7 +102,10 @@ Recommended access:
   resolve the object path.
 - Manual external URLs are also supported as a fallback.
 - Storage RLS policies for authenticated read/upload/update/delete are defined
-  in migrations `005`, `006`, `007`, and `008`.
+  in migrations `005`, `006`, `007`, `008`, and `012`.
+- `file-library` can remain private. Workspace pages resolve stored objects
+  with short-lived signed URLs. If a file is hosted in Yandex Disk, Google
+  Drive, Dropbox or another controlled store, use the `external_url` fallback.
 - Public EPK pages can show public bucket URLs or external/manual URLs. Keep the
   bucket private unless you intentionally expose selected files through public
   URLs or signed URLs.
@@ -195,6 +203,28 @@ links planned posts to Copy Library texts, events, albums, songs and EPK
 profiles. The module stores scheduling metadata, channels, content types,
 statuses, assets and result links. It does not publish automatically to VK,
 Telegram or any other platform.
+
+## Module File Attachments
+
+`public.files` and the `file-library` bucket are a hidden backend for module
+attachments, not a primary workspace section. Users upload files from the
+relevant module page: shared EPK documents, song documents and release files.
+
+Uploaded files are stored in the `file-library` bucket under relation-aware
+paths such as `event-{id}/{timestamp}-{filename}` or `general/...`. The app
+stores metadata in `public.files` and displays private objects through signed
+URLs inside the authenticated workspace.
+
+Browser uploads are limited to lightweight documents and images with a maximum
+size of 25 MB. Large audio, video, stems, multitracks and project archives
+should stay in external storage such as Yandex Disk, Google Drive or Dropbox and
+be linked through `external_url`.
+
+Technical riders are reusable shared documents: upload the rider once in EPK
+shared documents, then select it on each event through `events.tech_rider_file_id`.
+The old `events.tech_rider_url` field remains as an external fallback for older
+events. Stage plot, light timing and video timing stay as URL fields in the MVP
+because they usually depend on a specific venue and event.
 
 ## Project Structure
 

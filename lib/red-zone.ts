@@ -27,6 +27,7 @@ interface RedZoneInput {
   materials: (Material & { song?: { title: string } | null })[];
   backups: MaterialBackup[];
   setlistEventIds: Set<string>;
+  riderFileEventIds?: Set<string>;
 }
 
 function dayStart(value: Date) {
@@ -38,7 +39,7 @@ function daysUntil(value: string, now: Date) {
 }
 
 export function buildRedZoneIssues(
-  { tasks, events, promo, materials, backups, setlistEventIds }: RedZoneInput,
+  { tasks, events, promo, materials, backups, setlistEventIds, riderFileEventIds = new Set() }: RedZoneInput,
   now = new Date(),
 ): RedZoneIssue[] {
   const today = dayStart(now);
@@ -123,7 +124,7 @@ export function buildRedZoneIssues(
         date: event.starts_at,
       });
     }
-    if (days <= 10 && !event.tech_rider_url) {
+    if (days <= 10 && !event.tech_rider_file_id && !event.tech_rider_url && !riderFileEventIds.has(event.id)) {
       issues.push({
         id: `rider-${event.id}`,
         kind: "missing_rider",
@@ -153,4 +154,3 @@ export function buildRedZoneIssues(
     return (left.date ?? "9999").localeCompare(right.date ?? "9999");
   });
 }
-

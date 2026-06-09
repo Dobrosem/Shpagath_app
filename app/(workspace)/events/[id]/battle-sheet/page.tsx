@@ -13,7 +13,7 @@ import {
 import { notFound } from "next/navigation";
 import { RedZone } from "@/components/red-zone";
 import { StatusBadge } from "@/components/ui";
-import { getProfile, getRedZoneIssues } from "@/lib/data";
+import { getFileRecord, getProfile, getRedZoneIssues } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import type { Event, Material } from "@/lib/types";
@@ -76,6 +76,8 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
   }
 
   const event = eventResult.data as Event;
+  const selectedTechRider = event.tech_rider_file_id ? await getFileRecord(event.tech_rider_file_id) : null;
+  const activeTechRider = selectedTechRider?.status === "archived" ? null : selectedTechRider;
   const setlist = (setlistResult.data as Setlist | null) ?? null;
   const setlistItems = setlist?.items ?? [];
   const songIds = [...new Set(setlistItems.map((item) => item.song_id))];
@@ -104,7 +106,7 @@ export default async function BattleSheetPage({ params }: { params: Promise<{ id
         minute: "2-digit",
       }).format(start);
   const technicalDocuments = [
-    [t("battleSheet.rider"), event.tech_rider_url],
+    [t("battleSheet.rider"), activeTechRider?.display_url ?? activeTechRider?.external_url ?? event.tech_rider_url],
     [t("battleSheet.stagePlot"), event.stage_plot_url],
     [t("battleSheet.lightTiming"), event.light_timing_url],
     [t("battleSheet.videoTiming"), event.video_timing_url],

@@ -14,10 +14,11 @@ import { TaskCard } from "@/components/cards";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { EventEditDialog } from "@/components/event-edit-dialog";
+import { EventTechRiderSelector } from "@/components/file-library-components";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
 import { StatusBadge } from "@/components/ui";
-import { getAlbums, getCopyItems, getEpkProfiles, getEvents, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSongs } from "@/lib/data";
+import { getAlbums, getCopyItems, getEpkProfiles, getEvents, getFileRecord, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSharedTechRiderFiles, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -26,11 +27,12 @@ import { getEventPosterUrl } from "@/lib/utils";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [supabase, profile, issues, relatedCopyItems, allEvents, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
+  const [supabase, profile, issues, relatedCopyItems, sharedTechRiders, allEvents, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
     createClient(),
     getProfile(),
     getRedZoneIssues(id),
     getRelatedCopyItems("event_id", id),
+    getSharedTechRiderFiles(),
     getEvents(),
     getAlbums(),
     getSongs(),
@@ -68,9 +70,11 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       eventResult.data.poster_image_url,
     ),
   };
+  const selectedTechRider = event.tech_rider_file_id ? await getFileRecord(event.tech_rider_file_id) : null;
   const posterUrl = getEventPosterUrl(event);
   const eventTasks = (tasksResult.data as Task[]) ?? [];
   const setlistItems = setlistResult.data?.items ?? [];
+  const canEdit = ["admin", "member", "manager"].includes(profile.role);
   const locale = profile.locale === "en" ? "en-US" : "ru-RU";
   const startsAt = new Date(event.starts_at);
   const eventDate = new Intl.DateTimeFormat(locale, {
@@ -82,12 +86,6 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     hour: "2-digit",
     minute: "2-digit",
   }).format(startsAt);
-  const technicalLinks = [
-    [profile.locale === "en" ? "Technical rider" : "Технический райдер", event.tech_rider_url],
-    ["Stage plot", event.stage_plot_url],
-    [profile.locale === "en" ? "Lighting timing" : "Световой тайминг", event.light_timing_url],
-    [profile.locale === "en" ? "Video / intro" : "Видео / интро", event.video_timing_url],
-  ].filter((item): item is [string, string] => Boolean(item[1]));
   const summaryItems = [
     [profile.locale === "en" ? "Date" : "Дата", eventDate],
     [profile.locale === "en" ? "Time" : "Время", eventTime],
@@ -202,15 +200,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           </dl>
         </section>
 
-        <section className="metal-card p-5 sm:p-6">
-          <h2 className="font-display text-lg uppercase text-white">{t("event.technicalLinks")}</h2>
-          {technicalLinks.map(([label, url]) => (
-            <a href={url} target="_blank" rel="noreferrer" key={label} className="flex min-h-11 items-center justify-between border-b border-white/[.06] py-3 text-xs text-zinc-400 last:border-0 hover:text-white">
-              {label}<ExternalLink size={13} />
-            </a>
-          ))}
-          {!technicalLinks.length && <p className="py-5 text-sm text-zinc-600">{t("common.noData")}</p>}
-        </section>
+        <EventTechRiderSelector
+          event={event}
+          riders={sharedTechRiders}
+          selectedRider={selectedTechRider}
+          canEdit={canEdit}
+        />
 
         <RelatedCopyPanel
           title={t("copy.eventCopy")}

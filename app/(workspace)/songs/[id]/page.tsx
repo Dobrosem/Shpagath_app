@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { SongAlbumEditor } from "@/components/album-components";
 import { EntityDialog } from "@/components/entity-dialog";
+import { RelatedFilesPanel } from "@/components/file-library-components";
 import { MaterialBackupEditor } from "@/components/material-backup-editor";
 import { SongDetailTabs } from "@/components/song-detail-tabs";
 import {
@@ -15,7 +16,7 @@ import {
   SongOverviewEditor,
 } from "@/components/song-editors";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { getAlbums, getProfile, getProfiles } from "@/lib/data";
+import { getAlbums, getContentCalendarItems, getCopyItems, getEpkProfiles, getEvents, getProfile, getProfiles, getRelatedFiles, getSongs } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -31,7 +32,17 @@ const materialTypes = [
 
 export default async function SongPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [profile, profiles, albums] = await Promise.all([getProfile(), getProfiles(), getAlbums()]);
+  const [profile, profiles, albums, events, allSongs, epks, copyItems, contentItems, relatedFiles] = await Promise.all([
+    getProfile(),
+    getProfiles(),
+    getAlbums(),
+    getEvents(),
+    getSongs(),
+    getEpkProfiles(),
+    getCopyItems("all"),
+    getContentCalendarItems(),
+    getRelatedFiles("song_id", id),
+  ]);
   const t = translator(profile.locale);
   const supabase = await createClient();
   if (!supabase) notFound();
@@ -78,10 +89,11 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     backup: material.material_backups?.[0] ?? null,
   })) as Material[];
   const songTasks = (realTasks as Task[]) ?? [];
+  const canEdit = ["admin", "member", "manager"].includes(profile.role);
 
   const overview = <div>
     <SongOverviewEditor song={song} />
-    {["admin", "member", "manager"].includes(profile.role) && <SongAlbumEditor song={song} albums={albums} />}
+    {canEdit && <SongAlbumEditor song={song} albums={albums} />}
     <SongDangerZone songId={id} setlistUsageCount={setlistUsageCount ?? 0} />
   </div>;
 
@@ -94,6 +106,16 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   </div>;
 
   const materialContent = <div>
+    <div className="mb-5">
+      <RelatedFilesPanel
+        title={t("files.songFiles")}
+        items={relatedFiles}
+        options={{ events, albums, songs: allSongs, epks, copyItems, contentItems }}
+        defaults={{ song_id: id, file_type: "lyrics" }}
+        canCreate={canEdit}
+        allowedTypes={["lyrics", "guitar_tab", "bass_tab", "orchestral_score", "orchestral_parts", "document", "image", "artwork"]}
+      />
+    </div>
     <div className="mb-3 flex items-center justify-between">
       <h2 className="font-display text-lg uppercase text-white">{t("song.materials")}</h2>
       <span className="text-xs text-zinc-600">
