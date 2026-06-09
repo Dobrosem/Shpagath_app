@@ -216,7 +216,7 @@ stores metadata in `public.files` and displays private objects through signed
 URLs inside the authenticated workspace.
 
 Browser uploads are limited to lightweight documents and images with a maximum
-size of 25 MB. Large audio, video, stems, multitracks and project archives
+size of 8 MB. Large audio, video, stems, multitracks and project archives
 should stay in external storage such as Yandex Disk, Google Drive or Dropbox and
 be linked through `external_url`.
 
@@ -285,3 +285,51 @@ Useful smoke routes:
 Large audio/video files are not uploaded by the MVP. `song_materials.url` stores
 links to external storage such as Google Drive, Dropbox, Yandex Disk or another
 controlled file store.
+
+## Production Deployment Checklist
+
+### Vercel Environment Variables
+
+- `NEXT_PUBLIC_SUPABASE_URL`: public Supabase project URL.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public Supabase anon key.
+- `SUPABASE_SERVICE_ROLE_KEY`: server-only secret only for server-side
+  operational checks or scripts if needed. Do not expose it as `NEXT_PUBLIC_*`.
+
+### Supabase Migrations
+
+Apply migrations `001` through `013` strictly in order before opening the app to
+users.
+
+### Supabase Buckets
+
+- `song-covers`: public bucket for song cover images.
+- `event-posters`: public bucket for event poster images.
+- `album-covers`: private bucket; workspace pages display objects through
+  signed URLs.
+- `epk-assets`: authenticated/private unless selected assets are intentionally
+  exposed through public URL fields.
+- `file-library`: private bucket for internal attachments and shared technical
+  riders; workspace pages display objects through signed URLs.
+
+### Supabase Auth URLs
+
+Configure Supabase Auth URL settings before deploy preview testing:
+
+- Site URL: production domain.
+- Redirect URLs: production domain, Vercel preview domains if used, and
+  localhost for local development.
+
+### Post-Deploy Smoke
+
+- Login and logout.
+- `/dashboard`
+- `/songs`
+- `/events`
+- `/epk`
+- `/copy`
+- `/content-calendar`
+- Public EPK with `is_public = true` and private EPK with `is_public = false`.
+- File uploads under 8 MB.
+- External URL fallbacks.
+- PDF setlist download.
+- Battle Sheet shared technical rider.

@@ -346,7 +346,7 @@ export const en: Record<TranslationKey, string> = {
   "files.mimeType": "MIME type",
   "files.externalUrl": "External URL",
   "files.orPasteExternalLink": "Or paste external link",
-  "files.largeFileError": "File is too large. Use an external link for large files.",
+  "files.largeFileError": "The file is too large. Maximum size is 8 MB. Use an external link for heavy files.",
   "files.songExternalHint": "Use an external cloud link for audio, stems and project files.",
   "files.largeExternalHint": "Large audio, video, stems and project files should be stored externally and linked here.",
   "files.externalOnlyType": "This file type can only be added as an external link",

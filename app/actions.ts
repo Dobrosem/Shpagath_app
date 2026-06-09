@@ -256,7 +256,7 @@ const contentTypes = new Set(["post", "story", "reels", "shorts", "video", "anno
 const contentStatuses = new Set(["idea", "draft", "ready", "scheduled", "published", "cancelled", "archived"]);
 const fileTypes = new Set(["tech_rider", "stage_plot", "light_timing", "video_timing", "press_photo", "logo", "artwork", "lyrics", "guitar_tab", "bass_tab", "orchestral_score", "orchestral_parts", "backing_track", "click_track", "stems", "reaper_project", "contract", "invoice", "document", "image", "audio", "video", "other"]);
 const fileStatuses = new Set(["active", "draft", "review", "approved", "archived"]);
-const fileUploadMaxBytes = 25 * 1024 * 1024;
+const fileUploadMaxBytes = 8 * 1024 * 1024;
 const fileUploadMimeTypes = new Set([
   "application/pdf",
   "image/png",
@@ -2542,7 +2542,7 @@ async function uploadLibraryFile(
 ) {
   if (file.size > fileUploadMaxBytes) {
     return {
-      error: localized(locale, "Файл слишком большой. Для тяжёлых файлов используйте внешнюю ссылку.", "File is too large. Use an external link for large files."),
+      error: localized(locale, "Файл слишком большой. Максимальный размер — 8 МБ. Для тяжёлых файлов используйте внешнюю ссылку.", "The file is too large. Maximum size is 8 MB. Use an external link for heavy files."),
       data: null,
     };
   }
