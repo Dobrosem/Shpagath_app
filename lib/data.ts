@@ -200,6 +200,44 @@ export async function getEvents(): Promise<Event[]> {
   })));
 }
 
+export async function getDashboardUpcomingEvents(): Promise<Event[]> {
+  const supabase = await createClient();
+  if (!supabase) return events;
+  const { data, error } = await supabase
+    .from("events")
+    .select("id,title,city,venue,starts_at,status")
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at")
+    .limit(5);
+  if (error) {
+    reportReadError("dashboard upcoming events", error);
+    return [];
+  }
+  return (data as Event[]) ?? [];
+}
+
+export async function getDashboardTasks(): Promise<Task[]> {
+  const supabase = await createClient();
+  if (!supabase) return tasks;
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id,title,status,priority,due_date,project_id,song_id,event_id,assignee_id,project:projects(id,title),assignee:profiles!assignee_id(id,full_name),event:events(id,title,city,starts_at),song:songs(id,title)")
+    .not("status", "in", "(done,cancelled)")
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(20);
+  if (error) {
+    reportReadError("dashboard tasks", error);
+    return [];
+  }
+  return ((data ?? []).map((task) => ({
+    ...task,
+    project: Array.isArray(task.project) ? task.project[0] : task.project,
+    assignee: Array.isArray(task.assignee) ? task.assignee[0] : task.assignee,
+    event: Array.isArray(task.event) ? task.event[0] : task.event,
+    song: Array.isArray(task.song) ? task.song[0] : task.song,
+  })) as Task[]);
+}
+
 export async function getEventSetlist(eventId: string): Promise<EventSetlist | null> {
   const supabase = await createClient();
   if (!supabase) return null;
@@ -306,6 +344,36 @@ export async function getContentCalendarItems(): Promise<ContentCalendarItem[]> 
     .order("created_at", { ascending: false });
   reportReadError("content calendar items", error);
   return (data as ContentCalendarItem[]) ?? [];
+}
+
+export async function getDashboardContentItems(): Promise<ContentCalendarItem[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("content_calendar_items")
+    .select("id,title,channel,content_type,status,scheduled_at,published_at,created_at")
+    .in("status", ["idea", "draft", "ready", "scheduled"])
+    .order("scheduled_at", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (error) {
+    reportReadError("dashboard content calendar items", error);
+    return [];
+  }
+  return (data as ContentCalendarItem[]) ?? [];
+}
+
+export async function getDashboardEpkCount(): Promise<number> {
+  const supabase = await createClient();
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from("epk_profiles")
+    .select("id", { count: "exact", head: true });
+  if (error) {
+    reportReadError("dashboard epk count", error);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 export async function getContentCalendarItem(id: string): Promise<ContentCalendarItem | null> {

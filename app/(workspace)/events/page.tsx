@@ -4,7 +4,8 @@ import { PageHeader } from "@/components/ui";
 import { getEvents, getProfile } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
-export default async function EventsPage() {
+export default async function EventsPage({ searchParams }: { searchParams?: Promise<{ create?: string }> }) {
+  const params = await searchParams;
   const [events, profile] = await Promise.all([getEvents(), getProfile()]);
   const t = translator(profile.locale);
   return <>
@@ -16,7 +17,7 @@ export default async function EventsPage() {
           { value: "done", label: "Завершён" }, { value: "cancelled", label: "Отменён" }, { value: "archived", label: "Архив" },
         ] },
         { name: "ticket_url", label: "Билеты", type: "url" }, { name: "vk_event_url", label: "Событие VK", type: "url" }, { name: "description", label: "Описание", type: "textarea" },
-      ]} />} />
+      ]} initiallyOpen={params?.create === "1"} />} />
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{events.map((event) => <EventCard key={event.id} event={event} />)}{!events.length && <div className="metal-card col-span-full p-12 text-center text-sm text-zinc-600">{profile.locale === "en" ? "No events yet." : "Концертов пока нет."}</div>}</div>
   </>;
 }

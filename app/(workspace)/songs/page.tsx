@@ -10,7 +10,8 @@ const statusOptions = [
   ["ready", "Готово"], ["live_ready", "Готово к концерту"], ["archived", "Архив"],
 ].map(([value, label]) => ({ value, label }));
 
-export default async function SongsPage() {
+export default async function SongsPage({ searchParams }: { searchParams?: Promise<{ create?: string }> }) {
+  const params = await searchParams;
   const [songs, albums, profile] = await Promise.all([getSongs(), getAlbums(), getProfile()]);
   const t = translator(profile.locale);
   return <>
@@ -26,7 +27,7 @@ export default async function SongsPage() {
         { name: "description", label: "Описание", type: "textarea" },
         { name: "lyrics", label: "Текст песни", type: "textarea" },
         { name: "live_version_notes", label: "Заметки к концертной версии", type: "textarea" },
-      ]} />} />
+      ]} initiallyOpen={params?.create === "1"} />} />
     <SongsCatalog songs={songs} albums={albums} />
   </>;
 }

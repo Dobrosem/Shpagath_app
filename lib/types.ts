@@ -85,6 +85,8 @@ export interface Task {
   created_by?: string | null;
   project?: Pick<Project, "id" | "title">;
   assignee?: Pick<Profile, "id" | "full_name">;
+  event?: Pick<Event, "id" | "title" | "city" | "starts_at"> | null;
+  song?: Pick<Song, "id" | "title"> | null;
 }
 
 export interface Album {

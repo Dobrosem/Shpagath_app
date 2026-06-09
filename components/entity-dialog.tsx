@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   createEntity,
   createPackingList,
@@ -47,6 +47,7 @@ export function EntityDialog({
   fields,
   hiddenValues,
   detailPath,
+  initiallyOpen = false,
 }: {
   title: string;
   table: EntityTable;
@@ -54,9 +55,11 @@ export function EntityDialog({
   fields: Field[];
   hiddenValues?: Record<string, string>;
   detailPath?: string;
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale, t } = useI18n();
   const text = (value: string) => translateLiteral(locale, value);
   const action = table === "packing_lists"
@@ -73,7 +76,7 @@ export function EntityDialog({
 
   useEffect(() => {
     if (!state.success) return;
-    setOpen(false);
+    closeDialog();
     if (detailPath && state.id) {
       router.push(`${detailPath}/${state.id}`);
     } else {
@@ -81,15 +84,21 @@ export function EntityDialog({
     }
   }, [detailPath, router, state]);
 
+  function closeDialog() {
+    setOpen(false);
+    if (!searchParams.has("create")) return;
+    router.replace(path);
+  }
+
   return <>
     <button type="button" className="button-primary" onClick={() => setOpen(true)}>
       <Plus size={15} />{t("common.create")}
     </button>
-    {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && setOpen(false)}>
+    {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-sm" onMouseDown={() => !pending && closeDialog()}>
       <div className="metal-card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-6 flex items-center justify-between">
           <div><p className="eyebrow">{t("common.newRecord")}</p><h2 className="font-display text-2xl uppercase text-white">{text(title)}</h2></div>
-          <button type="button" aria-label={t("common.close")} disabled={pending} onClick={() => setOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
+          <button type="button" aria-label={t("common.close")} disabled={pending} onClick={closeDialog} className="text-zinc-600 hover:text-white"><X /></button>
         </div>
         <form action={formAction} className="grid gap-4 sm:grid-cols-2">
           {Object.entries(hiddenValues ?? {}).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
@@ -103,7 +112,7 @@ export function EntityDialog({
           </label>)}
           {state.error && <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 sm:col-span-2"><AlertCircle size={15} className="shrink-0" />{state.error}</div>}
           <div className="mt-2 flex justify-end gap-2 sm:col-span-2">
-            <button disabled={pending} type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
+            <button disabled={pending} type="button" className="button-secondary" onClick={closeDialog}>{t("common.cancel")}</button>
             <button disabled={pending} className="button-primary">{pending && <Loader2 size={14} className="animate-spin" />}{pending ? t("common.saving") : t("common.save")}</button>
           </div>
         </form>
