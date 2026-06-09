@@ -333,3 +333,135 @@ Configure Supabase Auth URL settings before deploy preview testing:
 - External URL fallbacks.
 - PDF setlist download.
 - Battle Sheet shared technical rider.
+
+## Selectel Deployment
+
+This first production stage runs only the Next.js app on a Selectel Cloud
+Server/VPS. Supabase remains the hosted DB/Auth/Storage backend.
+
+### 1. Create Server
+
+Create a Selectel Cloud Server or VPS with:
+
+- Ubuntu 24.04 or a Containers Ready/Docker image.
+- Public IP address.
+- SSH key access.
+- Firewall/security group allowing ports `22`, `80`, and `443`.
+
+Nginx reverse proxy and HTTPS can be configured manually after the app is
+running.
+
+### 2. Prepare Server
+
+Install Docker and Docker Compose if the image does not include them, then clone
+the repository:
+
+```bash
+git clone <repository-url>
+cd <repository-directory>/Saphath\ Cloud
+cp .env.production.example .env.production.local
+```
+
+Edit `.env.production.local` on the server and add the Supabase values:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-only optional/reserved. Do not expose it as
+`NEXT_PUBLIC_*`.
+
+Build and run the container:
+
+```bash
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+If Docker is not available locally, run this build check directly on the
+Selectel server after installing Docker.
+
+Check the app before adding a reverse proxy:
+
+```text
+http://SERVER_IP:3000
+```
+
+### 3. Reverse Proxy
+
+Use Nginx or Caddy in front of the container. The included example lives at:
+
+```text
+deploy/nginx/saphath-cloud.conf.example
+```
+
+For Nginx:
+
+- Proxy to `127.0.0.1:3000`.
+- Set `client_max_body_size 8M`.
+- Configure HTTPS with Let's Encrypt/Certbot after the domain points to the
+  server.
+
+### 4. Supabase Auth
+
+In Supabase Auth URL configuration, set:
+
+- Site URL: production domain.
+- Redirect URLs: production domain, localhost for local development, and any
+  temporary test domain if used.
+
+### 5. Supabase Storage
+
+Create and verify these buckets:
+
+- `song-covers`: public.
+- `event-posters`: public.
+- `album-covers`: private/signed URL.
+- `epk-assets`: authenticated/private unless intentionally exposed through
+  public URL fields.
+- `file-library`: private/signed URL.
+
+Apply migrations `001` through `013` strictly in order before production use.
+
+### 6. Post-Deploy Smoke
+
+Check:
+
+- Login and logout.
+- `/dashboard`
+- `/songs`
+- `/events`
+- `/epk`
+- `/copy`
+- `/content-calendar`
+- Public EPK with `is_public = true` and private EPK with `is_public = false`.
+- PDF setlist download.
+- Uploads under 8 MB.
+- External URL fallback.
+- Shared technical rider in Battle Sheet.
+
+### 7. Update Application
+
+For routine updates:
+
+```bash
+git pull
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Clean unused images only after confirming the new container is healthy:
+
+```bash
+docker image prune
+```
+
+Stop the application when needed:
+
+```bash
+docker compose down
+```
