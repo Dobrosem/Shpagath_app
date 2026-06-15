@@ -188,7 +188,7 @@ export function SongCard({ song }: { song: Song }) {
   return <Link href={`/songs/${song.id}`} className="metal-card group relative overflow-hidden transition hover:border-white/15">
     <div className="relative aspect-[16/9] overflow-hidden border-b border-white/[.06] bg-zinc-950">
       {displayCoverUrl
-        ? <img src={displayCoverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+        ? <img src={displayCoverUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
         : <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,.07),transparent_68%)]">
           <span className="font-display text-5xl uppercase text-zinc-800">{song.title.trim().slice(0, 2) || "S"}</span>
         </div>}
@@ -224,7 +224,7 @@ export function EventCard({ event }: { event: Event }) {
   return <Link href={`/events/${event.id}`} className="metal-card group flex min-h-48 overflow-hidden transition hover:border-white/15">
     <div className="relative flex w-32 shrink-0 flex-col items-center justify-center overflow-hidden border-r border-white/[.06] bg-zinc-950 sm:w-40">
       {posterUrl
-        ? <img src={posterUrl} alt="" className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+        ? <img src={posterUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
         : <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,.07),transparent_70%)]"><ImageIcon size={28} className="text-zinc-800" /></div>}
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
       <div className="absolute inset-x-0 bottom-3 z-10 text-center">

@@ -1,12 +1,12 @@
 import { EventCard } from "@/components/cards";
 import { EntityDialog } from "@/components/entity-dialog";
 import { PageHeader } from "@/components/ui";
-import { getEvents, getProfile } from "@/lib/data";
+import { getEventsList, getProfile } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function EventsPage({ searchParams }: { searchParams?: Promise<{ create?: string }> }) {
   const params = await searchParams;
-  const [events, profile] = await Promise.all([getEvents(), getProfile()]);
+  const [events, profile] = await Promise.all([getEventsList(), getProfile()]);
   const t = translator(profile.locale);
   return <>
     <PageHeader eyebrow={profile.locale === "en" ? "Live" : "Концерты"} title={t("page.events.title")} description={t("page.events.description")}

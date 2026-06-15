@@ -3,7 +3,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SetlistBuilder } from "@/components/setlist-builder";
 import { PageHeader } from "@/components/ui";
-import { getEventSetlist, getProfile, getSongs } from "@/lib/data";
+import { getEventSetlist, getProfile, getSetlistSongOptions } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,7 +16,7 @@ export default async function EventSetlistPage({
   const [supabase, profile, songs, setlist] = await Promise.all([
     createClient(),
     getProfile(),
-    getSongs(),
+    getSetlistSongOptions(),
     getEventSetlist(id),
   ]);
   if (!supabase) notFound();

@@ -1,10 +1,10 @@
 import { AlbumCard, AlbumCreateDialog } from "@/components/album-components";
 import { PageHeader } from "@/components/ui";
-import { getAlbums, getProfile } from "@/lib/data";
+import { getAlbumsList, getProfile } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function AlbumsPage() {
-  const [albums, profile] = await Promise.all([getAlbums(), getProfile()]);
+  const [albums, profile] = await Promise.all([getAlbumsList(), getProfile()]);
   const t = translator(profile.locale);
   return <>
     <PageHeader

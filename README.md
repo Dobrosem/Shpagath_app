@@ -373,6 +373,26 @@ SUPABASE_SERVICE_ROLE_KEY=
 `SUPABASE_SERVICE_ROLE_KEY` is server-only optional/reserved. Do not expose it as
 `NEXT_PUBLIC_*`.
 
+Docker Compose uses `.env.production.local` at runtime, but build args for
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must also be
+available while `docker compose build` runs. On the server, either export them
+before building:
+
+```bash
+set -a
+source .env.production.local
+set +a
+docker compose build --no-cache
+```
+
+Or create a local Compose `.env` file from the production env file:
+
+```bash
+cp .env.production.local .env
+```
+
+`.env` and `.env.production.local` are ignored by Git and must not be committed.
+
 Build and run the container:
 
 ```bash

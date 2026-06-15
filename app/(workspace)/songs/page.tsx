@@ -1,7 +1,7 @@
 import { EntityDialog } from "@/components/entity-dialog";
 import { SongsCatalog } from "@/components/songs-catalog";
 import { PageHeader } from "@/components/ui";
-import { getAlbums, getProfile, getSongs } from "@/lib/data";
+import { getAlbumsList, getProfile, getSongsList } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 const statusOptions = [
@@ -12,7 +12,7 @@ const statusOptions = [
 
 export default async function SongsPage({ searchParams }: { searchParams?: Promise<{ create?: string }> }) {
   const params = await searchParams;
-  const [songs, albums, profile] = await Promise.all([getSongs(), getAlbums(), getProfile()]);
+  const [songs, albums, profile] = await Promise.all([getSongsList(), getAlbumsList(), getProfile()]);
   const t = translator(profile.locale);
   return <>
     <PageHeader eyebrow={profile.locale === "en" ? "Repertoire" : "Репертуар"} title={t("page.songs.title")} description={t("page.songs.description")}

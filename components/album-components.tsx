@@ -140,7 +140,7 @@ export function AlbumCard({ album }: { album: Album }) {
   return <Link href={`/albums/${album.id}`} className="metal-card group overflow-hidden transition hover:border-white/15">
     <div className="relative aspect-square overflow-hidden bg-zinc-950">
       {coverUrl
-        ? <img src={coverUrl} alt={album.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+        ? <img src={coverUrl} alt={album.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
         : <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,.07),transparent_70%)]"><Disc3 size={48} className="text-zinc-800" /></div>}
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
       <div className="absolute inset-x-4 bottom-4">

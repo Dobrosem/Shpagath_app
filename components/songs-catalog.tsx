@@ -37,7 +37,7 @@ export function SongsCatalog({ songs, albums }: { songs: Song[]; albums: Album[]
             return <section key={album.id}>
               <div className="mb-4 flex items-center gap-4">
                 <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-950">
-                  {coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center"><Disc3 size={22} className="text-zinc-700" /></div>}
+                  {coverUrl ? <img src={coverUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center"><Disc3 size={22} className="text-zinc-700" /></div>}
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate font-display text-xl uppercase text-white">{album.title}</h2>
