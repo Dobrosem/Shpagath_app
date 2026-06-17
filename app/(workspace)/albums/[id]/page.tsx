@@ -9,7 +9,7 @@ import { RelatedContentCalendarPanel } from "@/components/content-calendar-compo
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { RelatedFilesPanel } from "@/components/file-library-components";
 import { StatusBadge } from "@/components/ui";
-import { getAlbum, getAlbums, getContentCalendarItems, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSongs } from "@/lib/data";
+import { getAlbum, getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { formatDate, getAlbumCoverUrl } from "@/lib/utils";
 
@@ -17,12 +17,12 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const [album, songs, profile, relatedCopyItems, relatedFiles, events, albums, epks, copyItems, calendarItems, contentItems] = await Promise.all([
     getAlbum(id),
-    getSongs(),
+    getSongRelationOptions(),
     getProfile(),
     getRelatedCopyItems("album_id", id),
     getRelatedFiles("album_id", id),
-    getEvents(),
-    getAlbums(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("album_id", id),

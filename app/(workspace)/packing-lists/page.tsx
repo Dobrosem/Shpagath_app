@@ -2,13 +2,13 @@ import Link from "next/link";
 import { CheckCircle2, PackageCheck } from "lucide-react";
 import { EntityDialog } from "@/components/entity-dialog";
 import { EmptyState, PageHeader } from "@/components/ui";
-import { getEvents, getPackingLists, getProfile, getProjects } from "@/lib/data";
+import { getEventRelationOptions, getPackingLists, getProfile, getProjects } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 
 export default async function PackingListsPage() {
   const [lists, events, projects, profile] = await Promise.all([
     getPackingLists(),
-    getEvents(),
+    getEventRelationOptions(),
     getProjects(),
     getProfile(),
   ]);
@@ -52,4 +52,3 @@ export default async function PackingListsPage() {
     </div>
   </>;
 }
-

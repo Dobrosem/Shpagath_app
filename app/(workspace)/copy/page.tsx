@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CopyCreateButton, CopyItemCard } from "@/components/copy-components";
 import { PageHeader } from "@/components/ui";
-import { getAlbums, getCopyItems, getEpkProfiles, getEvents, getProfile, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getSongRelationOptions } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 import type { CopyStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -18,9 +18,9 @@ export default async function CopyPage({ searchParams }: { searchParams: Promise
   const [items, profile, events, albums, songs, epks] = await Promise.all([
     getCopyItems(active),
     getProfile(),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
   ]);
   const t = translator(profile.locale);

@@ -1,6 +1,6 @@
 import { ContentCalendarCard, ContentCalendarCreateButton } from "@/components/content-calendar-components";
 import { PageHeader } from "@/components/ui";
-import { getAlbums, getContentCalendarItems, getCopyItems, getEpkProfiles, getEvents, getProfile, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getSongRelationOptions } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 import type { ContentCalendarItem } from "@/lib/types";
 
@@ -13,9 +13,9 @@ export default async function ContentCalendarPage() {
     getContentCalendarItems(),
     getProfile(),
     getCopyItems("all"),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
   ]);
   const t = translator(profile.locale);

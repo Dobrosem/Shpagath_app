@@ -195,6 +195,28 @@ export async function getSetlistSongOptions(): Promise<Song[]> {
   })) as Song[];
 }
 
+export async function getSongRelationOptions(): Promise<Song[]> {
+  const supabase = await createClient();
+  if (!supabase) return songs;
+  const { data, error } = await supabase
+    .from("songs")
+    .select("id,title,status,album_id,track_number,album:albums(id,title,type,status)")
+    .order("title");
+  if (error) {
+    reportReadError("song relation options", error);
+    return [];
+  }
+  return ((data ?? []).map((song) => {
+    const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    return {
+      ...song,
+      album: album ?? null,
+      materials_count: 0,
+      missing_backups_count: 0,
+    };
+  })) as Song[];
+}
+
 export async function getAlbums(): Promise<Album[]> {
   const supabase = await createClient();
   if (!supabase) return [];
@@ -209,6 +231,20 @@ export async function getAlbums(): Promise<Album[]> {
     cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
     songs_count: album.songs?.length ?? 0,
   })));
+}
+
+export async function getAlbumRelationOptions(): Promise<Album[]> {
+  const supabase = await createClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("albums")
+    .select("id,title,type,status,release_date")
+    .order("title");
+  if (error) {
+    reportReadError("album relation options", error);
+    return [];
+  }
+  return (data as Album[]) ?? [];
 }
 
 export async function getAlbumsList(limit = 60): Promise<Album[]> {
@@ -264,6 +300,20 @@ export async function getEvents(): Promise<Event[]> {
     ...event,
     poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),
   })));
+}
+
+export async function getEventRelationOptions(): Promise<Event[]> {
+  const supabase = await createClient();
+  if (!supabase) return events;
+  const { data, error } = await supabase
+    .from("events")
+    .select("id,title,city,venue,starts_at,status")
+    .order("starts_at");
+  if (error) {
+    reportReadError("event relation options", error);
+    return [];
+  }
+  return (data as Event[]) ?? [];
 }
 
 export async function getEventsList(limit = 80): Promise<Event[]> {

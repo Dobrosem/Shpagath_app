@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ContentCalendarEditor } from "@/components/content-calendar-components";
-import { getAlbums, getContentCalendarItem, getCopyItems, getEpkProfiles, getEvents, getProfile, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getContentCalendarItem, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 
 export default async function ContentCalendarDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,9 +11,9 @@ export default async function ContentCalendarDetailPage({ params }: { params: Pr
     getContentCalendarItem(id),
     getProfile(),
     getCopyItems("all"),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
   ]);
   if (!item) notFound();

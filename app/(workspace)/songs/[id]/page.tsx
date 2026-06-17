@@ -16,7 +16,7 @@ import {
   SongOverviewEditor,
 } from "@/components/song-editors";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { getAlbums, getContentCalendarItems, getCopyItems, getEpkProfiles, getEvents, getProfile, getProfiles, getRelatedFiles, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getProfiles, getRelatedFiles, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -35,9 +35,9 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   const [profile, profiles, albums, events, allSongs, epks, copyItems, contentItems, relatedFiles] = await Promise.all([
     getProfile(),
     getProfiles(),
-    getAlbums(),
-    getEvents(),
-    getSongs(),
+    getAlbumRelationOptions(),
+    getEventRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
     getCopyItems("all"),
     getContentCalendarItems(),

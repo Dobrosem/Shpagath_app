@@ -5,7 +5,7 @@ import { RelatedContentCalendarPanel } from "@/components/content-calendar-compo
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { EpkMediaManager, EpkProfileEditor, EpkPublicLink } from "@/components/epk-components";
 import { RelatedFilesPanel, SharedDocumentsPanel } from "@/components/file-library-components";
-import { getAlbums, getContentCalendarItems, getCopyItems, getEpkProfile, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSharedTechRiderFiles, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfile, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSharedTechRiderFiles, getSongRelationOptions } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 
 export default async function EpkDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -16,9 +16,9 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
     getRelatedCopyItems("epk_id", id),
     getRelatedFiles("epk_id", id),
     getSharedTechRiderFiles(),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("epk_id", id),

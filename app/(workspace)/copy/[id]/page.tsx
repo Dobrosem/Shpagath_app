@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { CopyItemEditor } from "@/components/copy-components";
-import { getAlbums, getCopyItem, getCopyItems, getEpkProfiles, getEvents, getProfile, getRelatedContentCalendarItems, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getCopyItem, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 
 export default async function CopyDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,9 +11,9 @@ export default async function CopyDetailPage({ params }: { params: Promise<{ id:
   const [item, profile, events, albums, songs, epks, copyItems, calendarItems] = await Promise.all([
     getCopyItem(id),
     getProfile(),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("copy_item_id", id),

@@ -18,7 +18,7 @@ import { EventTechRiderSelector } from "@/components/file-library-components";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
 import { StatusBadge } from "@/components/ui";
-import { getAlbums, getCopyItems, getEpkProfiles, getEvents, getFileRecord, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSharedTechRiderFiles, getSongs } from "@/lib/data";
+import { getAlbumRelationOptions, getCopyItems, getEpkProfiles, getEventRelationOptions, getFileRecord, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSharedTechRiderFiles, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -33,9 +33,9 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     getRedZoneIssues(id),
     getRelatedCopyItems("event_id", id),
     getSharedTechRiderFiles(),
-    getEvents(),
-    getAlbums(),
-    getSongs(),
+    getEventRelationOptions(),
+    getAlbumRelationOptions(),
+    getSongRelationOptions(),
     getEpkProfiles(),
     getCopyItems("all"),
     getRelatedContentCalendarItems("event_id", id),
