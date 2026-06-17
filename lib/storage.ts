@@ -7,6 +7,7 @@ type StorageSource = {
 };
 
 const SIGNED_URL_TIMEOUT_MS = 3000;
+const PREVIEW_URL_TIMEOUT_MS = 1500;
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -108,10 +109,19 @@ export async function getStorageDisplayUrl(
   supabase: ServerSupabaseClient,
   bucket: string,
   value?: string | null,
+  timeoutMs = SIGNED_URL_TIMEOUT_MS,
 ) {
   const source = value?.trim();
   if (!source) return null;
   const { fallbackUrl, objectPath } = storageSource(source, bucket);
   if (!objectPath) return fallbackUrl;
-  return await tryCreateSignedUrl(supabase, bucket, objectPath) ?? fallbackUrl;
+  return await tryCreateSignedUrl(supabase, bucket, objectPath, 60 * 60, timeoutMs) ?? fallbackUrl;
+}
+
+export async function getStoragePreviewUrl(
+  supabase: ServerSupabaseClient,
+  bucket: string,
+  value?: string | null,
+) {
+  return getStorageDisplayUrl(supabase, bucket, value, PREVIEW_URL_TIMEOUT_MS);
 }

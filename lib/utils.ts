@@ -25,7 +25,21 @@ export function formatDuration(totalSeconds?: number | null) {
 function getPublicMediaUrl(value: string | null | undefined, bucket: string) {
   const source = value?.trim();
   if (!source) return null;
-  if (/^(https?:|data:|blob:)/i.test(source) || source.startsWith("/")) return source;
+  if (/^(data:|blob:)/i.test(source) || source.startsWith("/")) return source;
+  if (/^https?:\/\//i.test(source)) {
+    try {
+      const url = new URL(source);
+      if (
+        url.pathname.includes(`/storage/v1/object/authenticated/${bucket}/`)
+        || url.pathname.includes(`/storage/v1/object/sign/${bucket}/`)
+      ) {
+        return null;
+      }
+      return source;
+    } catch {
+      return null;
+    }
+  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
   if (!supabaseUrl) return source;
   const objectPath = source.replace(/^\/+/, "").replace(new RegExp(`^${bucket}/`), "");

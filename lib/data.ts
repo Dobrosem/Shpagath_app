@@ -1,7 +1,7 @@
 import { createClient } from "./supabase/server";
 import { demoProfile, events, people, projects, songs, tasks } from "./demo-data";
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
-import { getStorageDisplayUrl } from "./storage";
+import { getStorageDisplayUrl, getStoragePreviewUrl } from "./storage";
 import type {
   Album,
   Contact,
@@ -190,22 +190,30 @@ export async function getSongsList(limit = 50): Promise<Song[]> {
   if (!supabase) return songs.slice(0, limit);
   const { data, error } = await supabase
     .from("songs")
-    .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,album:albums(id,title,type,status)")
+    .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,album:albums(id,title,type,status,cover_image_url)")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) {
     reportReadError("songs list", error);
     return [];
   }
-  return ((data ?? []).map((song) => {
+  return mapSettled(data ?? [], "songs list preview URLs", async (song) => {
     const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    const [songCoverResult, albumCoverResult] = await Promise.allSettled([
+      getStoragePreviewUrl(supabase, "song-covers", song.cover_image_url),
+      album ? getStoragePreviewUrl(supabase, "album-covers", album.cover_image_url) : Promise.resolve(null),
+    ]);
     return {
       ...song,
-      album: album ?? null,
+      cover_display_url: songCoverResult.status === "fulfilled" ? songCoverResult.value : null,
+      album: album ? {
+        ...album,
+        cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
+      } : null,
       materials_count: 0,
       missing_backups_count: 0,
     };
-  })) as Song[];
+  }) as Promise<Song[]>;
 }
 
 export async function getSetlistSongOptions(): Promise<Song[]> {
@@ -287,7 +295,7 @@ export async function getAlbumsList(limit = 60): Promise<Album[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("albums")
-    .select("id,title,type,status,release_date,cover_status,created_at,updated_at,songs(id)")
+    .select("id,title,type,status,release_date,cover_image_url,cover_status,created_at,updated_at,songs(id)")
     .order("release_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -295,12 +303,11 @@ export async function getAlbumsList(limit = 60): Promise<Album[]> {
     reportReadError("albums list", error);
     return [];
   }
-  return (((data as Album[]) ?? []).map((album) => ({
+  return mapSettled((data as Album[]) ?? [], "albums list preview URLs", async (album) => ({
     ...album,
-    cover_image_url: null,
-    cover_display_url: null,
+    cover_display_url: await getStoragePreviewUrl(supabase, "album-covers", album.cover_image_url),
     songs_count: album.songs?.length ?? 0,
-  })));
+  }));
 }
 
 export async function getAlbum(id: string): Promise<Album | null> {
@@ -351,7 +358,10 @@ export async function getEventRelationOptions(): Promise<Event[]> {
     reportReadError("event relation options", error);
     return [];
   }
-  return (data as Event[]) ?? [];
+  return mapSettled((data as Event[]) ?? [], "events list preview URLs", async (event) => ({
+    ...event,
+    poster_display_url: await getStoragePreviewUrl(supabase, "event-posters", event.poster_image_url),
+  }));
 }
 
 export async function getEventsList(limit = 80): Promise<Event[]> {

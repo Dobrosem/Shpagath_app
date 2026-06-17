@@ -27,6 +27,12 @@ function reportAuthError(error: unknown) {
   });
 }
 
+function hasSupabaseAuthCookie(request: NextRequest) {
+  return request.cookies
+    .getAll()
+    .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+}
+
 export async function middleware(request: NextRequest) {
   const { url, anonKey, isConfigured } = getSupabaseEnv();
   const isLogin = request.nextUrl.pathname === "/login";
@@ -57,11 +63,17 @@ export async function middleware(request: NextRequest) {
   });
 
   let user = null;
+  let authFailed = false;
   try {
     const result = await authTimeout(supabase.auth.getUser());
     user = result.data.user;
   } catch (error) {
+    authFailed = true;
     reportAuthError(error);
+  }
+
+  if (!user && authFailed && hasSupabaseAuthCookie(request) && !isLogin) {
+    return response;
   }
 
   if (!user && !isLogin && !isPublicEpk) {
