@@ -221,21 +221,29 @@ export async function getSetlistSongOptions(): Promise<Song[]> {
   if (!supabase) return songs;
   const { data, error } = await supabase
     .from("songs")
-    .select("id,title,status,bpm,key,tuning,cover_image_url,album:albums(id,title,type,status)")
+    .select("id,title,status,bpm,key,tuning,cover_image_url,album:albums(id,title,type,status,cover_image_url)")
     .order("title");
   if (error) {
     reportReadError("setlist song options", error);
     return [];
   }
-  return ((data ?? []).map((song) => {
+  return mapSettled(data ?? [], "setlist song preview URLs", async (song) => {
     const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    const [songCoverResult, albumCoverResult] = await Promise.allSettled([
+      getStoragePreviewUrl(supabase, "song-covers", song.cover_image_url),
+      album ? getStoragePreviewUrl(supabase, "album-covers", album.cover_image_url) : Promise.resolve(null),
+    ]);
     return {
       ...song,
-      album: album ?? null,
+      cover_display_url: songCoverResult.status === "fulfilled" ? songCoverResult.value : null,
+      album: album ? {
+        ...album,
+        cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
+      } : null,
       materials_count: 0,
       missing_backups_count: 0,
     };
-  })) as Song[];
+  }) as Promise<Song[]>;
 }
 
 export async function getSongRelationOptions(): Promise<Song[]> {
@@ -358,10 +366,7 @@ export async function getEventRelationOptions(): Promise<Event[]> {
     reportReadError("event relation options", error);
     return [];
   }
-  return mapSettled((data as Event[]) ?? [], "events list preview URLs", async (event) => ({
-    ...event,
-    poster_display_url: await getStoragePreviewUrl(supabase, "event-posters", event.poster_image_url),
-  }));
+  return (data as Event[]) ?? [];
 }
 
 export async function getEventsList(limit = 80): Promise<Event[]> {
@@ -376,7 +381,10 @@ export async function getEventsList(limit = 80): Promise<Event[]> {
     reportReadError("events list", error);
     return [];
   }
-  return (data as Event[]) ?? [];
+  return mapSettled((data as Event[]) ?? [], "events list preview URLs", async (event) => ({
+    ...event,
+    poster_display_url: await getStoragePreviewUrl(supabase, "event-posters", event.poster_image_url),
+  }));
 }
 
 export async function getDashboardUpcomingEvents(): Promise<Event[]> {
