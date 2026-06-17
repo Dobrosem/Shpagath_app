@@ -32,13 +32,27 @@ function getPublicMediaUrl(value: string | null | undefined, bucket: string) {
   return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`;
 }
 
+function getExternalOrLocalMediaUrl(value: string | null | undefined) {
+  const source = value?.trim();
+  if (!source) return null;
+  if (/^(data:|blob:)/i.test(source) || source.startsWith("/")) return source;
+  if (!/^https?:\/\//i.test(source)) return null;
+  try {
+    const url = new URL(source);
+    if (url.pathname.includes("/storage/v1/object/")) return null;
+    return source;
+  } catch {
+    return null;
+  }
+}
+
 export function getSongDisplayCover(song: Pick<Song, "cover_image_url" | "cover_display_url">) {
   // Album cover fallback can be added here later without changing song cards.
   return song.cover_display_url || getPublicMediaUrl(song.cover_image_url, "song-covers");
 }
 
 export function getAlbumCoverUrl(album: Pick<Album, "cover_image_url" | "cover_display_url">) {
-  return album.cover_display_url || getPublicMediaUrl(album.cover_image_url, "album-covers");
+  return album.cover_display_url || getExternalOrLocalMediaUrl(album.cover_image_url);
 }
 
 export function getSongResolvedCover(

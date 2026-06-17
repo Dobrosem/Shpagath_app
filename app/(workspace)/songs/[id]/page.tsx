@@ -76,12 +76,16 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   if (tasksError) console.error("Supabase read song tasks error:", tasksError);
   if (setlistUsageError) console.error("Supabase read song setlist usage error:", setlistUsageError);
   const rawAlbum = Array.isArray(realSong.album) ? realSong.album[0] : realSong.album;
+  const [songCoverResult, albumCoverResult] = await Promise.allSettled([
+    getStorageDisplayUrl(supabase, "song-covers", realSong.cover_image_url),
+    rawAlbum ? getStorageDisplayUrl(supabase, "album-covers", rawAlbum.cover_image_url) : Promise.resolve(null),
+  ]);
   const song = {
     ...(realSong as Song),
-    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", realSong.cover_image_url),
+    cover_display_url: songCoverResult.status === "fulfilled" ? songCoverResult.value : null,
     album: rawAlbum ? {
       ...rawAlbum,
-      cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", rawAlbum.cover_image_url),
+      cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
     } : null,
   };
   const songMaterials = (realMaterials ?? []).map((material) => ({

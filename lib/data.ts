@@ -51,14 +51,45 @@ function reportReadError(entity: string, error: unknown) {
 }
 
 type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+const AUTH_USER_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
+async function mapSettled<T, U>(
+  items: T[],
+  entity: string,
+  mapper: (item: T) => Promise<U>,
+): Promise<U[]> {
+  const results = await Promise.allSettled(items.map(mapper));
+  return results.flatMap((result) => {
+    if (result.status === "fulfilled") return [result.value];
+    reportReadError(entity, result.reason);
+    return [];
+  });
+}
 
 export async function getProfile(): Promise<Profile> {
   const supabase = await createClient();
   if (!supabase) return demoProfile;
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  let user = null;
+  let authError = null;
+  try {
+    const result = await withTimeout(supabase.auth.getUser(), AUTH_USER_TIMEOUT_MS);
+    user = result.data.user;
+    authError = result.error;
+  } catch (error) {
+    authError = error;
+  }
   if (authError || !user) {
     reportReadError("auth user", authError);
-    return demoProfile;
+    return { ...demoProfile, role: "guest" };
   }
 
   let { data, error } = await supabase
@@ -132,22 +163,26 @@ export async function getSongs(): Promise<Song[]> {
     .select("*, album:albums(id,title,type,status,cover_image_url), song_materials(type, material_backups(status))")
     .order("created_at", { ascending: false });
   reportReadError("songs", error);
-  return Promise.all((data ?? []).map(async (song) => {
+  return mapSettled(data ?? [], "songs signed URLs", async (song) => {
     const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    const [albumCoverResult, songCoverResult] = await Promise.allSettled([
+      album ? getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url) : Promise.resolve(null),
+      getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+    ]);
     return {
     ...song,
     album: album ? {
       ...album,
-      cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+      cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
     } : null,
-    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+    cover_display_url: songCoverResult.status === "fulfilled" ? songCoverResult.value : null,
     materials_count: song.song_materials?.length ?? 0,
     missing_backups_count: (song.song_materials ?? []).filter(
       (material: { type: string; material_backups?: { status: string }[] }) =>
         criticalMaterialTypes.has(material.type)
         && material.material_backups?.[0]?.status !== "ok",
     ).length,
-  };})) as Promise<Song[]>;
+  };}) as Promise<Song[]>;
 }
 
 export async function getSongsList(limit = 50): Promise<Song[]> {
@@ -226,11 +261,11 @@ export async function getAlbums(): Promise<Album[]> {
     .order("release_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
   reportReadError("albums", error);
-  return Promise.all(((data as Album[]) ?? []).map(async (album) => ({
+  return mapSettled((data as Album[]) ?? [], "albums signed URLs", async (album) => ({
     ...album,
     cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
     songs_count: album.songs?.length ?? 0,
-  })));
+  }));
 }
 
 export async function getAlbumRelationOptions(): Promise<Album[]> {
@@ -280,13 +315,16 @@ export async function getAlbum(id: string): Promise<Album | null> {
   reportReadError("album", error);
   if (!data) return null;
   const album = data as Album;
+  const albumCoverPromise = getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url);
+  const songsPromise = mapSettled(album.songs ?? [], "album songs signed URLs", async (song) => ({
+    ...song,
+    cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+  }));
+  const [albumCoverResult, songsResult] = await Promise.allSettled([albumCoverPromise, songsPromise]);
   return {
     ...album,
-    cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
-    songs: await Promise.all((album.songs ?? []).map(async (song) => ({
-      ...song,
-      cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
-    }))),
+    cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
+    songs: songsResult.status === "fulfilled" ? songsResult.value : [],
     songs_count: album.songs?.length ?? 0,
   };
 }
@@ -296,10 +334,10 @@ export async function getEvents(): Promise<Event[]> {
   if (!supabase) return events;
   const { data, error } = await supabase.from("events").select("*").order("starts_at");
   reportReadError("events", error);
-  return Promise.all(((data as Event[]) ?? []).map(async (event) => ({
+  return mapSettled((data as Event[]) ?? [], "events signed URLs", async (event) => ({
     ...event,
     poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),
-  })));
+  }));
 }
 
 export async function getEventRelationOptions(): Promise<Event[]> {
@@ -538,20 +576,16 @@ const imageFileTypes = ["image", "press_photo", "logo", "artwork"];
 const audioFileTypes = ["audio", "backing_track", "click_track", "stems"];
 
 async function withFileDisplayUrls(supabase: ServerSupabaseClient, records: FileRecord[]): Promise<FileRecord[]> {
-  return Promise.all(records.map(async (record) => {
+  return mapSettled(records, "file display URLs", async (record) => {
     let displayUrl = record.public_url || record.external_url || null;
     if (record.storage_path) {
-      try {
-        displayUrl = await getStorageDisplayUrl(supabase, record.bucket || "file-library", record.storage_path) ?? displayUrl;
-      } catch (error) {
-        reportReadError("file signed URL", error);
-      }
+      displayUrl = await getStorageDisplayUrl(supabase, record.bucket || "file-library", record.storage_path) ?? displayUrl;
     }
     return {
       ...record,
       display_url: displayUrl,
     };
-  }));
+  });
 }
 
 export async function getFileRecords(filter: "all" | "documents" | "images" | "audio" | "archived" = "all"): Promise<FileRecord[]> {
@@ -818,21 +852,25 @@ export async function getMyWorkspace() {
       || rehearsal.participants?.includes(user.id),
   );
 
-  const mySongs = await Promise.all(((songResult.data as Song[]) ?? []).map(async (song) => {
+  const mySongs = await mapSettled((songResult.data as Song[]) ?? [], "my songs signed URLs", async (song) => {
     const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    const [albumCoverResult, songCoverResult] = await Promise.allSettled([
+      album ? getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url) : Promise.resolve(null),
+      getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+    ]);
     return {
       ...song,
       album: album ? {
         ...album,
-        cover_display_url: await getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url),
+        cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
       } : null,
-      cover_display_url: await getStorageDisplayUrl(supabase, "song-covers", song.cover_image_url),
+      cover_display_url: songCoverResult.status === "fulfilled" ? songCoverResult.value : null,
     };
-  }));
-  const myEvents = await Promise.all(((eventResult.data as Event[]) ?? []).map(async (event) => ({
+  });
+  const myEvents = await mapSettled((eventResult.data as Event[]) ?? [], "my events signed URLs", async (event) => ({
     ...event,
     poster_display_url: await getStorageDisplayUrl(supabase, "event-posters", event.poster_image_url),
-  })));
+  }));
 
   return {
     tasks: myTasks,

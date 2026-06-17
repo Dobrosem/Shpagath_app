@@ -3,6 +3,29 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
+const AUTH_TIMEOUT_MS = 3000;
+
+function authTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${AUTH_TIMEOUT_MS}ms`)), AUTH_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+function reportAuthError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    console.error("Supabase middleware auth error:", String(error ?? "Unknown error"));
+    return;
+  }
+  const typedError = error as { message?: string; name?: string; status?: number | string };
+  console.error("Supabase middleware auth error:", {
+    name: typedError.name ?? null,
+    status: typedError.status ?? null,
+    message: typedError.message ?? "Unknown error",
+  });
+}
 
 export async function middleware(request: NextRequest) {
   const { url, anonKey, isConfigured } = getSupabaseEnv();
@@ -16,6 +39,8 @@ export async function middleware(request: NextRequest) {
     loginUrl.searchParams.set("error", "supabase_not_configured");
     return NextResponse.redirect(loginUrl);
   }
+
+  if (isPublicEpk) return NextResponse.next();
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, anonKey, {
@@ -31,9 +56,13 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const result = await authTimeout(supabase.auth.getUser());
+    user = result.data.user;
+  } catch (error) {
+    reportAuthError(error);
+  }
 
   if (!user && !isLogin && !isPublicEpk) {
     const loginUrl = request.nextUrl.clone();
