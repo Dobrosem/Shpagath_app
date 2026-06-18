@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
-const AUTH_TIMEOUT_MS = 3000;
+const AUTH_TIMEOUT_MS = 1500;
 
 function authTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([
@@ -33,6 +33,12 @@ function hasSupabaseAuthCookie(request: NextRequest) {
     .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
 }
 
+function isRscRequest(request: NextRequest) {
+  return request.nextUrl.searchParams.has("_rsc")
+    || request.headers.get("rsc") === "1"
+    || request.headers.get("next-router-prefetch") === "1";
+}
+
 export async function middleware(request: NextRequest) {
   const { url, anonKey, isConfigured } = getSupabaseEnv();
   const isLogin = request.nextUrl.pathname === "/login";
@@ -47,8 +53,21 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isPublicEpk) return NextResponse.next();
+  const hasAuthCookie = hasSupabaseAuthCookie(request);
+
+  if (!hasAuthCookie && !isLogin) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
   let response = NextResponse.next({ request });
+
+  if (hasAuthCookie && !isLogin && isRscRequest(request)) {
+    return response;
+  }
+
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
@@ -72,7 +91,7 @@ export async function middleware(request: NextRequest) {
     reportAuthError(error);
   }
 
-  if (!user && authFailed && hasSupabaseAuthCookie(request) && !isLogin) {
+  if (!user && authFailed && hasAuthCookie && !isLogin) {
     return response;
   }
 

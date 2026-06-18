@@ -16,7 +16,7 @@ import {
   SongOverviewEditor,
 } from "@/components/song-editors";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getProfiles, getRelatedFiles, getSongRelationOptions } from "@/lib/data";
+import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getProfiles, getRelatedFiles, getSongRelationOptions, safeSupabaseQuery } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -52,21 +52,37 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     { data: realTasks, error: tasksError },
     { count: setlistUsageCount, error: setlistUsageError },
   ] = await Promise.all([
-    supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").eq("id", id).single(),
-    supabase
-      .from("song_materials")
-      .select("*, material_backups(*)")
-      .eq("song_id", id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("tasks")
-      .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
-      .eq("song_id", id)
-      .order("due_date"),
-    supabase
-      .from("setlist_items")
-      .select("id", { count: "exact", head: true })
-      .eq("song_id", id),
+    safeSupabaseQuery(
+      "song detail",
+      supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").eq("id", id).single(),
+      { data: null, error: null },
+    ),
+    safeSupabaseQuery(
+      "song materials",
+      supabase
+        .from("song_materials")
+        .select("*, material_backups(*)")
+        .eq("song_id", id)
+        .order("created_at", { ascending: false }),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery(
+      "song tasks",
+      supabase
+        .from("tasks")
+        .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
+        .eq("song_id", id)
+        .order("due_date"),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery(
+      "song setlist usage",
+      supabase
+        .from("setlist_items")
+        .select("id", { count: "exact", head: true })
+        .eq("song_id", id),
+      { data: null, error: null, count: 0 },
+    ),
   ]);
   if (songError || !realSong) {
     console.error("Supabase read song error:", songError);

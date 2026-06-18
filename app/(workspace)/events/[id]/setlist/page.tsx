@@ -3,7 +3,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SetlistBuilder } from "@/components/setlist-builder";
 import { PageHeader } from "@/components/ui";
-import { getEventSetlist, getProfile, getSetlistSongOptions } from "@/lib/data";
+import { getEventSetlist, getProfile, getSetlistSongOptions, safeSupabaseQuery } from "@/lib/data";
 import { translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,11 +21,15 @@ export default async function EventSetlistPage({
   ]);
   if (!supabase) notFound();
 
-  const { data: event, error } = await supabase
-    .from("events")
-    .select("id,title")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: event, error } = await safeSupabaseQuery(
+    "event setlist page event",
+    supabase
+      .from("events")
+      .select("id,title")
+      .eq("id", id)
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   if (error || !event) notFound();
 
   const t = translator(profile.locale);

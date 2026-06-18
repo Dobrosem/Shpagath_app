@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "./supabase/server";
 import { demoProfile, events, people, projects, songs, tasks } from "./demo-data";
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
@@ -52,6 +53,7 @@ function reportReadError(entity: string, error: unknown) {
 
 type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 const AUTH_USER_TIMEOUT_MS = 3000;
+const DB_READ_TIMEOUT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -75,7 +77,21 @@ async function mapSettled<T, U>(
   });
 }
 
-export async function getProfile(): Promise<Profile> {
+export async function safeSupabaseQuery<T>(
+  entity: string,
+  query: PromiseLike<T>,
+  fallback: unknown,
+  timeoutMs = DB_READ_TIMEOUT_MS,
+): Promise<T> {
+  try {
+    return await withTimeout(Promise.resolve(query), timeoutMs);
+  } catch (error) {
+    reportReadError(entity, error);
+    return fallback as T;
+  }
+}
+
+export const getProfile = cache(async (): Promise<Profile> => {
   const supabase = await createClient();
   if (!supabase) return demoProfile;
   let user = null;
@@ -92,21 +108,33 @@ export async function getProfile(): Promise<Profile> {
     return { ...demoProfile, role: "guest" };
   }
 
-  let { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
+  let { data, error } = await safeSupabaseQuery(
+    "profile",
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle(),
+    { data: null, error: null },
+  );
 
   if (!data) {
-    const { error: ensureError } = await supabase.rpc("ensure_profile");
+    const { error: ensureError } = await safeSupabaseQuery(
+      "ensure_profile",
+      supabase.rpc("ensure_profile"),
+      { data: null, error: null },
+    );
     reportReadError("ensure_profile", ensureError);
     if (!ensureError) {
-      const result = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      const result = await safeSupabaseQuery(
+        "profile retry",
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single(),
+        { data: null, error: null },
+      );
       data = result.data;
       error = result.error;
     }
@@ -120,7 +148,7 @@ export async function getProfile(): Promise<Profile> {
         email: user.email ?? demoProfile.email,
         full_name: String(user.user_metadata?.full_name ?? demoProfile.full_name),
       };
-}
+});
 
 export async function getProfiles(): Promise<Profile[]> {
   const supabase = await createClient();
@@ -188,11 +216,15 @@ export async function getSongs(): Promise<Song[]> {
 export async function getSongsList(limit = 50): Promise<Song[]> {
   const supabase = await createClient();
   if (!supabase) return songs.slice(0, limit);
-  const { data, error } = await supabase
-    .from("songs")
-    .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,album:albums(id,title,type,status,cover_image_url)")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const { data, error } = await safeSupabaseQuery(
+    "songs list",
+    supabase
+      .from("songs")
+      .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,album:albums(id,title,type,status,cover_image_url)")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("songs list", error);
     return [];
@@ -219,10 +251,14 @@ export async function getSongsList(limit = 50): Promise<Song[]> {
 export async function getSetlistSongOptions(): Promise<Song[]> {
   const supabase = await createClient();
   if (!supabase) return songs;
-  const { data, error } = await supabase
-    .from("songs")
-    .select("id,title,status,bpm,key,tuning,cover_image_url,album:albums(id,title,type,status,cover_image_url)")
-    .order("title");
+  const { data, error } = await safeSupabaseQuery(
+    "setlist song options",
+    supabase
+      .from("songs")
+      .select("id,title,status,bpm,key,tuning,cover_image_url,album:albums(id,title,type,status,cover_image_url)")
+      .order("title"),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("setlist song options", error);
     return [];
@@ -301,12 +337,16 @@ export async function getAlbumRelationOptions(): Promise<Album[]> {
 export async function getAlbumsList(limit = 60): Promise<Album[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("albums")
-    .select("id,title,type,status,release_date,cover_image_url,cover_status,created_at,updated_at,songs(id)")
-    .order("release_date", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const { data, error } = await safeSupabaseQuery(
+    "albums list",
+    supabase
+      .from("albums")
+      .select("id,title,type,status,release_date,cover_image_url,cover_status,created_at,updated_at,songs(id)")
+      .order("release_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("albums list", error);
     return [];
@@ -321,12 +361,16 @@ export async function getAlbumsList(limit = 60): Promise<Album[]> {
 export async function getAlbum(id: string): Promise<Album | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("albums")
-    .select("*, songs(*)")
-    .eq("id", id)
-    .order("track_number", { referencedTable: "songs", ascending: true, nullsFirst: false })
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "album",
+    supabase
+      .from("albums")
+      .select("*, songs(*)")
+      .eq("id", id)
+      .order("track_number", { referencedTable: "songs", ascending: true, nullsFirst: false })
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("album", error);
   if (!data) return null;
   const album = data as Album;
@@ -358,10 +402,14 @@ export async function getEvents(): Promise<Event[]> {
 export async function getEventRelationOptions(): Promise<Event[]> {
   const supabase = await createClient();
   if (!supabase) return events;
-  const { data, error } = await supabase
-    .from("events")
-    .select("id,title,city,venue,starts_at,status")
-    .order("starts_at");
+  const { data, error } = await safeSupabaseQuery(
+    "event relation options",
+    supabase
+      .from("events")
+      .select("id,title,city,venue,starts_at,status")
+      .order("starts_at"),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("event relation options", error);
     return [];
@@ -372,11 +420,15 @@ export async function getEventRelationOptions(): Promise<Event[]> {
 export async function getEventsList(limit = 80): Promise<Event[]> {
   const supabase = await createClient();
   if (!supabase) return events.slice(0, limit);
-  const { data, error } = await supabase
-    .from("events")
-    .select("id,title,city,venue,starts_at,status,poster_image_url")
-    .order("starts_at")
-    .limit(limit);
+  const { data, error } = await safeSupabaseQuery(
+    "events list",
+    supabase
+      .from("events")
+      .select("id,title,city,venue,starts_at,status,poster_image_url")
+      .order("starts_at")
+      .limit(limit),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("events list", error);
     return [];
@@ -390,12 +442,16 @@ export async function getEventsList(limit = 80): Promise<Event[]> {
 export async function getDashboardUpcomingEvents(): Promise<Event[]> {
   const supabase = await createClient();
   if (!supabase) return events;
-  const { data, error } = await supabase
-    .from("events")
-    .select("id,title,city,venue,starts_at,status")
-    .gte("starts_at", new Date().toISOString())
-    .order("starts_at")
-    .limit(5);
+  const { data, error } = await safeSupabaseQuery(
+    "dashboard upcoming events",
+    supabase
+      .from("events")
+      .select("id,title,city,venue,starts_at,status")
+      .gte("starts_at", new Date().toISOString())
+      .order("starts_at")
+      .limit(5),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("dashboard upcoming events", error);
     return [];
@@ -406,12 +462,16 @@ export async function getDashboardUpcomingEvents(): Promise<Event[]> {
 export async function getDashboardTasks(): Promise<Task[]> {
   const supabase = await createClient();
   if (!supabase) return tasks;
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("id,title,status,priority,due_date,project_id,song_id,event_id,assignee_id,project:projects(id,title),assignee:profiles!assignee_id(id,full_name),event:events(id,title,city,starts_at),song:songs(id,title)")
-    .not("status", "in", "(done,cancelled)")
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .limit(20);
+  const { data, error } = await safeSupabaseQuery(
+    "dashboard tasks",
+    supabase
+      .from("tasks")
+      .select("id,title,status,priority,due_date,project_id,song_id,event_id,assignee_id,project:projects(id,title),assignee:profiles!assignee_id(id,full_name),event:events(id,title,city,starts_at),song:songs(id,title)")
+      .not("status", "in", "(done,cancelled)")
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(20),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("dashboard tasks", error);
     return [];
@@ -428,13 +488,17 @@ export async function getDashboardTasks(): Promise<Task[]> {
 export async function getEventSetlist(eventId: string): Promise<EventSetlist | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("setlists")
-    .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
-    .eq("event_id", eventId)
-    .order("order_index", { referencedTable: "setlist_items" })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "event setlist",
+    supabase
+      .from("setlists")
+      .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
+      .eq("event_id", eventId)
+      .order("order_index", { referencedTable: "setlist_items" })
+      .limit(1)
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("event setlist", error);
   return (data as EventSetlist | null) ?? null;
 }
@@ -490,7 +554,7 @@ export async function getCopyItems(status?: CopyStatus | "all"): Promise<CopyIte
     .select("*, event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
     .order("updated_at", { ascending: false });
   if (status && status !== "all") query = query.eq("status", status);
-  const { data, error } = await query;
+  const { data, error } = await safeSupabaseQuery("copy items", query, { data: [], error: null });
   reportReadError("copy items", error);
   return (data as CopyItem[]) ?? [];
 }
@@ -511,12 +575,16 @@ export async function getCopyItem(id: string): Promise<CopyItem | null> {
 export async function getRelatedCopyItems(relation: "event_id" | "album_id" | "song_id" | "epk_id", id: string): Promise<CopyItem[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("copy_items")
-    .select("id,title,category,channel,language,status,body,updated_at,event_id,album_id,song_id,epk_id")
-    .eq(relation, id)
-    .order("updated_at", { ascending: false })
-    .limit(6);
+  const { data, error } = await safeSupabaseQuery(
+    "related copy items",
+    supabase
+      .from("copy_items")
+      .select("id,title,category,channel,language,status,body,updated_at,event_id,album_id,song_id,epk_id")
+      .eq(relation, id)
+      .order("updated_at", { ascending: false })
+      .limit(6),
+    { data: [], error: null },
+  );
   reportReadError("related copy items", error);
   return (data as CopyItem[]) ?? [];
 }
@@ -524,11 +592,15 @@ export async function getRelatedCopyItems(relation: "event_id" | "album_id" | "s
 export async function getContentCalendarItems(): Promise<ContentCalendarItem[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("content_calendar_items")
-    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
-    .order("scheduled_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "content calendar items",
+    supabase
+      .from("content_calendar_items")
+      .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+      .order("scheduled_at", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("content calendar items", error);
   return (data as ContentCalendarItem[]) ?? [];
 }
@@ -536,13 +608,17 @@ export async function getContentCalendarItems(): Promise<ContentCalendarItem[]> 
 export async function getDashboardContentItems(): Promise<ContentCalendarItem[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("content_calendar_items")
-    .select("id,title,channel,content_type,status,scheduled_at,published_at,created_at")
-    .in("status", ["idea", "draft", "ready", "scheduled"])
-    .order("scheduled_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(5);
+  const { data, error } = await safeSupabaseQuery(
+    "dashboard content calendar items",
+    supabase
+      .from("content_calendar_items")
+      .select("id,title,channel,content_type,status,scheduled_at,published_at,created_at")
+      .in("status", ["idea", "draft", "ready", "scheduled"])
+      .order("scheduled_at", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(5),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("dashboard content calendar items", error);
     return [];
@@ -553,9 +629,13 @@ export async function getDashboardContentItems(): Promise<ContentCalendarItem[]>
 export async function getDashboardEpkCount(): Promise<number> {
   const supabase = await createClient();
   if (!supabase) return 0;
-  const { count, error } = await supabase
-    .from("epk_profiles")
-    .select("id", { count: "exact", head: true });
+  const { count, error } = await safeSupabaseQuery(
+    "dashboard epk count",
+    supabase
+      .from("epk_profiles")
+      .select("id", { count: "exact", head: true }),
+    { data: null, error: null, count: 0 },
+  );
   if (error) {
     reportReadError("dashboard epk count", error);
     return 0;
@@ -578,12 +658,16 @@ export async function getContentCalendarItem(id: string): Promise<ContentCalenda
 export async function getRelatedContentCalendarItems(relation: "copy_item_id" | "event_id" | "album_id" | "song_id" | "epk_id", id: string): Promise<ContentCalendarItem[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("content_calendar_items")
-    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
-    .eq(relation, id)
-    .order("scheduled_at", { ascending: true, nullsFirst: false })
-    .limit(6);
+  const { data, error } = await safeSupabaseQuery(
+    "related content calendar items",
+    supabase
+      .from("content_calendar_items")
+      .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+      .eq(relation, id)
+      .order("scheduled_at", { ascending: true, nullsFirst: false })
+      .limit(6),
+    { data: [], error: null },
+  );
   reportReadError("related content calendar items", error);
   return (data as ContentCalendarItem[]) ?? [];
 }
@@ -618,7 +702,7 @@ export async function getFileRecords(filter: "all" | "documents" | "images" | "a
   if (filter === "audio") query = query.in("file_type", audioFileTypes).neq("status", "archived");
   if (filter === "archived") query = query.eq("status", "archived");
   if (filter === "all") query = query.neq("status", "archived");
-  const { data, error } = await query;
+  const { data, error } = await safeSupabaseQuery("files", query, { data: [], error: null });
   if (error) {
     reportReadError("files", error);
     return [];
@@ -629,11 +713,15 @@ export async function getFileRecords(filter: "all" | "documents" | "images" | "a
 export async function getFileRecord(id: string): Promise<FileRecord | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("files")
-    .select(fileRecordSelect)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "file",
+    supabase
+      .from("files")
+      .select(fileRecordSelect)
+      .eq("id", id)
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   if (error) {
     reportReadError("file", error);
     return null;
@@ -649,12 +737,16 @@ export async function getRelatedFiles(
 ): Promise<FileRecord[]> {
   const supabase = await createClient();
   if (!supabase || !id) return [];
-  const { data, error } = await supabase
-    .from("files")
-    .select(fileRecordSelect)
-    .eq(relation, id)
-    .order("updated_at", { ascending: false })
-    .limit(5);
+  const { data, error } = await safeSupabaseQuery(
+    "related files",
+    supabase
+      .from("files")
+      .select(fileRecordSelect)
+      .eq(relation, id)
+      .order("updated_at", { ascending: false })
+      .limit(5),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("related files", error);
     return [];
@@ -665,13 +757,17 @@ export async function getRelatedFiles(
 export async function getSharedTechRiderFiles(): Promise<FileRecord[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("files")
-    .select(fileRecordSelect)
-    .eq("file_type", "tech_rider")
-    .is("event_id", null)
-    .in("status", ["active", "approved"])
-    .order("updated_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "shared tech rider files",
+    supabase
+      .from("files")
+      .select(fileRecordSelect)
+      .eq("file_type", "tech_rider")
+      .is("event_id", null)
+      .in("status", ["active", "approved"])
+      .order("updated_at", { ascending: false }),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("shared tech rider files", error);
     return [];

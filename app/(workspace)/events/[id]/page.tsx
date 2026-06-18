@@ -18,7 +18,7 @@ import { EventTechRiderSelector } from "@/components/file-library-components";
 import { RedZone } from "@/components/red-zone";
 import { TemplateTaskButton } from "@/components/template-task-button";
 import { StatusBadge } from "@/components/ui";
-import { getAlbumRelationOptions, getCopyItems, getEpkProfiles, getEventRelationOptions, getFileRecord, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSharedTechRiderFiles, getSongRelationOptions } from "@/lib/data";
+import { getAlbumRelationOptions, getCopyItems, getEpkProfiles, getEventRelationOptions, getFileRecord, getProfile, getRedZoneIssues, getRelatedContentCalendarItems, getRelatedCopyItems, getSharedTechRiderFiles, getSongRelationOptions, safeSupabaseQuery } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
@@ -44,19 +44,31 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   if (!supabase) notFound();
 
   const [eventResult, tasksResult, setlistResult] = await Promise.all([
-    supabase.from("events").select("*").eq("id", id).maybeSingle(),
-    supabase
-      .from("tasks")
-      .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
-      .eq("event_id", id)
-      .order("due_date"),
-    supabase
-      .from("setlists")
-      .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
-      .eq("event_id", id)
-      .order("order_index", { referencedTable: "setlist_items" })
-      .limit(1)
-      .maybeSingle(),
+    safeSupabaseQuery(
+      "event detail",
+      supabase.from("events").select("*").eq("id", id).maybeSingle(),
+      { data: null, error: null },
+    ),
+    safeSupabaseQuery(
+      "event tasks",
+      supabase
+        .from("tasks")
+        .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
+        .eq("event_id", id)
+        .order("due_date"),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery(
+      "event setlist preview",
+      supabase
+        .from("setlists")
+        .select("*, items:setlist_items(*, song:songs(id,title,bpm,key,tuning))")
+        .eq("event_id", id)
+        .order("order_index", { referencedTable: "setlist_items" })
+        .limit(1)
+        .maybeSingle(),
+      { data: null, error: null },
+    ),
   ]);
   if (eventResult.error || !eventResult.data) notFound();
   if (tasksResult.error) console.error("Supabase read event tasks error:", tasksResult.error);
