@@ -52,6 +52,38 @@ export interface PrintableSetlistData {
 type SupabaseLike = {
   from: (table: string) => any;
 };
+const PRINT_SETLIST_DB_TIMEOUT_MS = 8000;
+
+function withPrintSetlistTimeout<T>(promise: PromiseLike<T>, timeoutMs = PRINT_SETLIST_DB_TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
+function reportPrintSetlistError(entity: string, error: unknown) {
+  if (!error || typeof error !== "object") {
+    console.error(`Supabase read printable setlist ${entity} error:`, String(error ?? "Unknown error"));
+    return;
+  }
+  const typedError = error as { code?: string | null; message?: string | null; name?: string | null; status?: number | null };
+  console.error(`Supabase read printable setlist ${entity} error:`, {
+    code: typedError.code ?? null,
+    message: typedError.message ?? typedError.name ?? "Unknown error",
+    status: typedError.status ?? null,
+  });
+}
+
+async function safePrintSetlistQuery<T>(entity: string, query: PromiseLike<T>, fallback: T): Promise<T> {
+  try {
+    return await withPrintSetlistTimeout(query);
+  } catch (error) {
+    reportPrintSetlistError(entity, error);
+    return fallback;
+  }
+}
 
 export function getLogoSrc() {
   if (existsSync(getLogoPath("saphath-logo.svg"))) return "/branding/saphath-logo.svg";
@@ -110,22 +142,30 @@ export async function getPrintableSetlistData({
   };
 }): Promise<PrintableSetlistData | null> {
   const [eventResult, setlistResult] = await Promise.all([
-    supabase.from("events").select("*").eq("id", eventId).maybeSingle(),
-    supabase
-      .from("setlists")
-      .select("id,title,notes,items:setlist_items(id,order_index,live_version,notes,song_id,song:songs(id,title,bpm,key,tuning,duration,album:albums(id,title)))")
-      .eq("event_id", eventId)
-      .order("order_index", { referencedTable: "setlist_items" })
-      .limit(1)
-      .maybeSingle(),
+    safePrintSetlistQuery(
+      "event",
+      supabase.from("events").select("*").eq("id", eventId).maybeSingle(),
+      { data: null, error: null },
+    ),
+    safePrintSetlistQuery(
+      "setlist",
+      supabase
+        .from("setlists")
+        .select("id,title,notes,items:setlist_items(id,order_index,live_version,notes,song_id,song:songs(id,title,bpm,key,tuning,duration,album:albums(id,title)))")
+        .eq("event_id", eventId)
+        .order("order_index", { referencedTable: "setlist_items" })
+        .limit(1)
+        .maybeSingle(),
+      { data: null, error: null },
+    ),
   ]);
 
   if (eventResult.error || !eventResult.data) {
-    console.error("Supabase read printable setlist event error:", eventResult.error);
+    reportPrintSetlistError("event", eventResult.error);
     return null;
   }
   if (setlistResult.error) {
-    console.error("Supabase read printable setlist error:", setlistResult.error);
+    reportPrintSetlistError("setlist", setlistResult.error);
   }
 
   const event = eventResult.data as Event;
@@ -135,15 +175,19 @@ export async function getPrintableSetlistData({
   let materials: (Material & { song?: { title: string } | null })[] = [];
 
   if (songIds.length) {
-    const materialsResult = await supabase
-      .from("song_materials")
-      .select("*, song:songs(title)")
-      .in("song_id", songIds)
-      .in("type", printMaterialTypes)
-      .order("song_id")
-      .order("type");
+    const materialsResult = await safePrintSetlistQuery(
+      "materials",
+      supabase
+        .from("song_materials")
+        .select("*, song:songs(title)")
+        .in("song_id", songIds)
+        .in("type", printMaterialTypes)
+        .order("song_id")
+        .order("type"),
+      { data: [], error: null },
+    );
     if (materialsResult.error) {
-      console.error("Supabase read printable setlist materials error:", materialsResult.error);
+      reportPrintSetlistError("materials", materialsResult.error);
     } else {
       materials = (materialsResult.data as (Material & { song?: { title: string } | null })[]) ?? [];
     }

@@ -52,6 +52,11 @@ function reportReadError(entity: string, error: unknown) {
 }
 
 type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+type AuthUser = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+};
 const AUTH_USER_TIMEOUT_MS = 3000;
 const DB_READ_TIMEOUT_MS = 8000;
 
@@ -91,20 +96,27 @@ export async function safeSupabaseQuery<T>(
   }
 }
 
+const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
+  const supabase = await createClient();
+  if (!supabase) return null;
+  try {
+    const result = await withTimeout(supabase.auth.getUser(), AUTH_USER_TIMEOUT_MS);
+    if (result.error || !result.data.user) {
+      reportReadError("auth user", result.error);
+      return null;
+    }
+    return result.data.user;
+  } catch (error) {
+    reportReadError("auth user", error);
+    return null;
+  }
+});
+
 export const getProfile = cache(async (): Promise<Profile> => {
   const supabase = await createClient();
   if (!supabase) return demoProfile;
-  let user = null;
-  let authError = null;
-  try {
-    const result = await withTimeout(supabase.auth.getUser(), AUTH_USER_TIMEOUT_MS);
-    user = result.data.user;
-    authError = result.error;
-  } catch (error) {
-    authError = error;
-  }
-  if (authError || !user) {
-    reportReadError("auth user", authError);
+  const user = await getCurrentUser();
+  if (!user) {
     return { ...demoProfile, role: "guest" };
   }
 
@@ -153,7 +165,11 @@ export const getProfile = cache(async (): Promise<Profile> => {
 export async function getProfiles(): Promise<Profile[]> {
   const supabase = await createClient();
   if (!supabase) return people;
-  const { data, error } = await supabase.from("profiles").select("*").order("full_name");
+  const { data, error } = await safeSupabaseQuery(
+    "profiles",
+    supabase.from("profiles").select("*").order("full_name"),
+    { data: [], error: null },
+  );
   reportReadError("profiles", error);
   return ((data ?? []).map((profile) => ({
     ...profile,
@@ -164,10 +180,14 @@ export async function getProfiles(): Promise<Profile[]> {
 export async function getProjects(): Promise<Project[]> {
   const supabase = await createClient();
   if (!supabase) return projects;
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*, owner:profiles!owner_id(id, full_name)")
-    .order("deadline");
+  const { data, error } = await safeSupabaseQuery(
+    "projects",
+    supabase
+      .from("projects")
+      .select("*, owner:profiles!owner_id(id, full_name)")
+      .order("deadline"),
+    { data: [], error: null },
+  );
   reportReadError("projects", error);
   return (data as Project[]) ?? [];
 }
@@ -175,10 +195,14 @@ export async function getProjects(): Promise<Project[]> {
 export async function getTasks(): Promise<Task[]> {
   const supabase = await createClient();
   if (!supabase) return tasks;
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
-    .order("due_date");
+  const { data, error } = await safeSupabaseQuery(
+    "tasks",
+    supabase
+      .from("tasks")
+      .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
+      .order("due_date"),
+    { data: [], error: null },
+  );
   reportReadError("tasks", error);
   return (data as Task[]) ?? [];
 }
@@ -186,10 +210,14 @@ export async function getTasks(): Promise<Task[]> {
 export async function getSongs(): Promise<Song[]> {
   const supabase = await createClient();
   if (!supabase) return songs;
-  const { data, error } = await supabase
-    .from("songs")
-    .select("*, album:albums(id,title,type,status,cover_image_url), song_materials(type, material_backups(status))")
-    .order("created_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "songs",
+    supabase
+      .from("songs")
+      .select("*, album:albums(id,title,type,status,cover_image_url), song_materials(type, material_backups(status))")
+      .order("created_at", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("songs", error);
   return mapSettled(data ?? [], "songs signed URLs", async (song) => {
     const album = Array.isArray(song.album) ? song.album[0] : song.album;
@@ -285,10 +313,14 @@ export async function getSetlistSongOptions(): Promise<Song[]> {
 export async function getSongRelationOptions(): Promise<Song[]> {
   const supabase = await createClient();
   if (!supabase) return songs;
-  const { data, error } = await supabase
-    .from("songs")
-    .select("id,title,status,album_id,track_number,album:albums(id,title,type,status)")
-    .order("title");
+  const { data, error } = await safeSupabaseQuery(
+    "song relation options",
+    supabase
+      .from("songs")
+      .select("id,title,status,album_id,track_number,album:albums(id,title,type,status)")
+      .order("title"),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("song relation options", error);
     return [];
@@ -307,11 +339,15 @@ export async function getSongRelationOptions(): Promise<Song[]> {
 export async function getAlbums(): Promise<Album[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("albums")
-    .select("*, songs(id,title,track_number)")
-    .order("release_date", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "albums",
+    supabase
+      .from("albums")
+      .select("*, songs(id,title,track_number)")
+      .order("release_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("albums", error);
   return mapSettled((data as Album[]) ?? [], "albums signed URLs", async (album) => ({
     ...album,
@@ -323,10 +359,14 @@ export async function getAlbums(): Promise<Album[]> {
 export async function getAlbumRelationOptions(): Promise<Album[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("albums")
-    .select("id,title,type,status,release_date")
-    .order("title");
+  const { data, error } = await safeSupabaseQuery(
+    "album relation options",
+    supabase
+      .from("albums")
+      .select("id,title,type,status,release_date")
+      .order("title"),
+    { data: [], error: null },
+  );
   if (error) {
     reportReadError("album relation options", error);
     return [];
@@ -391,7 +431,11 @@ export async function getAlbum(id: string): Promise<Album | null> {
 export async function getEvents(): Promise<Event[]> {
   const supabase = await createClient();
   if (!supabase) return events;
-  const { data, error } = await supabase.from("events").select("*").order("starts_at");
+  const { data, error } = await safeSupabaseQuery(
+    "events",
+    supabase.from("events").select("*").order("starts_at"),
+    { data: [], error: null },
+  );
   reportReadError("events", error);
   return mapSettled((data as Event[]) ?? [], "events signed URLs", async (event) => ({
     ...event,
@@ -506,7 +550,11 @@ export async function getEventSetlist(eventId: string): Promise<EventSetlist | n
 export async function getRehearsals(): Promise<Rehearsal[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase.from("rehearsals").select("*").order("starts_at");
+  const { data, error } = await safeSupabaseQuery(
+    "rehearsals",
+    supabase.from("rehearsals").select("*").order("starts_at"),
+    { data: [], error: null },
+  );
   reportReadError("rehearsals", error);
   return (data as Rehearsal[]) ?? [];
 }
@@ -514,10 +562,14 @@ export async function getRehearsals(): Promise<Rehearsal[]> {
 export async function getPromoMaterials(): Promise<PromoMaterial[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("promo_materials")
-    .select("*")
-    .order("publish_date");
+  const { data, error } = await safeSupabaseQuery(
+    "promo materials",
+    supabase
+      .from("promo_materials")
+      .select("*")
+      .order("publish_date"),
+    { data: [], error: null },
+  );
   reportReadError("promo materials", error);
   return (data as PromoMaterial[]) ?? [];
 }
@@ -525,10 +577,14 @@ export async function getPromoMaterials(): Promise<PromoMaterial[]> {
 export async function getEpkProfiles(): Promise<EpkProfile[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("epk_profiles")
-    .select("*, media_links:epk_media_links(id)")
-    .order("created_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "epk profiles",
+    supabase
+      .from("epk_profiles")
+      .select("*, media_links:epk_media_links(id)")
+      .order("created_at", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("epk profiles", error);
   return (data as EpkProfile[]) ?? [];
 }
@@ -536,12 +592,16 @@ export async function getEpkProfiles(): Promise<EpkProfile[]> {
 export async function getEpkProfile(id: string): Promise<EpkProfile | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("epk_profiles")
-    .select("*, media_links:epk_media_links(*)")
-    .eq("id", id)
-    .order("order_index", { referencedTable: "epk_media_links" })
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "epk profile",
+    supabase
+      .from("epk_profiles")
+      .select("*, media_links:epk_media_links(*)")
+      .eq("id", id)
+      .order("order_index", { referencedTable: "epk_media_links" })
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("epk profile", error);
   return (data as EpkProfile | null) ?? null;
 }
@@ -562,12 +622,16 @@ export async function getCopyItems(status?: CopyStatus | "all"): Promise<CopyIte
 export async function getCopyItem(id: string): Promise<CopyItem | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("copy_items")
-    .select("*, event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug), versions:copy_item_versions(*, author:profiles!created_by(id,full_name))")
-    .eq("id", id)
-    .order("created_at", { referencedTable: "copy_item_versions", ascending: false })
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "copy item",
+    supabase
+      .from("copy_items")
+      .select("*, event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug), versions:copy_item_versions(*, author:profiles!created_by(id,full_name))")
+      .eq("id", id)
+      .order("created_at", { referencedTable: "copy_item_versions", ascending: false })
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("copy item", error);
   return (data as CopyItem | null) ?? null;
 }
@@ -646,11 +710,15 @@ export async function getDashboardEpkCount(): Promise<number> {
 export async function getContentCalendarItem(id: string): Promise<ContentCalendarItem | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("content_calendar_items")
-    .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "content calendar item",
+    supabase
+      .from("content_calendar_items")
+      .select("*, copy_item:copy_items(id,title,body), event:events(id,title), album:albums(id,title), song:songs(id,title), epk:epk_profiles(id,title,slug)")
+      .eq("id", id)
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("content calendar item", error);
   return (data as ContentCalendarItem | null) ?? null;
 }
@@ -778,7 +846,11 @@ export async function getSharedTechRiderFiles(): Promise<FileRecord[]> {
 export async function getContacts(): Promise<Contact[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase.from("contacts").select("*").order("name");
+  const { data, error } = await safeSupabaseQuery(
+    "contacts",
+    supabase.from("contacts").select("*").order("name"),
+    { data: [], error: null },
+  );
   reportReadError("contacts", error);
   return (data as Contact[]) ?? [];
 }
@@ -786,10 +858,14 @@ export async function getContacts(): Promise<Contact[]> {
 export async function getFinanceRecords(): Promise<FinanceRecord[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("finance_records")
-    .select("*")
-    .order("date", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "finance records",
+    supabase
+      .from("finance_records")
+      .select("*")
+      .order("date", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("finance records", error);
   return (data as FinanceRecord[]) ?? [];
 }
@@ -797,10 +873,14 @@ export async function getFinanceRecords(): Promise<FinanceRecord[]> {
 export async function getTaskTemplates(): Promise<TaskTemplate[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("task_templates")
-    .select("*, items:task_template_items(*)")
-    .order("title");
+  const { data, error } = await safeSupabaseQuery(
+    "task templates",
+    supabase
+      .from("task_templates")
+      .select("*, items:task_template_items(*)")
+      .order("title"),
+    { data: [], error: null },
+  );
   reportReadError("task templates", error);
   return (data as TaskTemplate[]) ?? [];
 }
@@ -808,10 +888,14 @@ export async function getTaskTemplates(): Promise<TaskTemplate[]> {
 export async function getPackingLists(): Promise<PackingList[]> {
   const supabase = await createClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("packing_lists")
-    .select("*, event:events(id,title), project:projects(id,title), items:packing_list_items(*)")
-    .order("created_at", { ascending: false });
+  const { data, error } = await safeSupabaseQuery(
+    "packing lists",
+    supabase
+      .from("packing_lists")
+      .select("*, event:events(id,title), project:projects(id,title), items:packing_list_items(*)")
+      .order("created_at", { ascending: false }),
+    { data: [], error: null },
+  );
   reportReadError("packing lists", error);
   return (data as PackingList[]) ?? [];
 }
@@ -819,12 +903,16 @@ export async function getPackingLists(): Promise<PackingList[]> {
 export async function getPackingList(id: string): Promise<PackingList | null> {
   const supabase = await createClient();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("packing_lists")
-    .select("*, event:events(id,title), project:projects(id,title), items:packing_list_items(*, responsible:profiles!responsible_id(id,full_name))")
-    .eq("id", id)
-    .order("order_index", { referencedTable: "packing_list_items" })
-    .maybeSingle();
+  const { data, error } = await safeSupabaseQuery(
+    "packing list",
+    supabase
+      .from("packing_lists")
+      .select("*, event:events(id,title), project:projects(id,title), items:packing_list_items(*, responsible:profiles!responsible_id(id,full_name))")
+      .eq("id", id)
+      .order("order_index", { referencedTable: "packing_list_items" })
+      .maybeSingle(),
+    { data: null, error: null },
+  );
   reportReadError("packing list", error);
   return (data as PackingList | null) ?? null;
 }
@@ -838,13 +926,17 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
 
   const [tasksResult, eventsResult, promoResult, materialsResult, backupsResult, setlistsResult, riderFilesResult] =
     await Promise.all([
-      supabase.from("tasks").select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)"),
-      eventQuery,
-      supabase.from("promo_materials").select("*"),
-      supabase.from("song_materials").select("*, song:songs(title)"),
-      supabase.from("material_backups").select("*"),
-      supabase.from("setlists").select("event_id, setlist_items(count)"),
-      supabase.from("files").select("event_id").eq("file_type", "tech_rider"),
+      safeSupabaseQuery(
+        "red zone tasks",
+        supabase.from("tasks").select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)"),
+        { data: [], error: null },
+      ),
+      safeSupabaseQuery("red zone events", eventQuery, { data: [], error: null }),
+      safeSupabaseQuery("red zone promo", supabase.from("promo_materials").select("*"), { data: [], error: null }),
+      safeSupabaseQuery("red zone materials", supabase.from("song_materials").select("*, song:songs(title)"), { data: [], error: null }),
+      safeSupabaseQuery("red zone backups", supabase.from("material_backups").select("*"), { data: [], error: null }),
+      safeSupabaseQuery("red zone setlists", supabase.from("setlists").select("event_id, setlist_items(count)"), { data: [], error: null }),
+      safeSupabaseQuery("red zone rider files", supabase.from("files").select("event_id").eq("file_type", "tech_rider"), { data: [], error: null }),
     ]);
 
   reportReadError("red zone tasks", tasksResult.error);
@@ -893,26 +985,38 @@ export async function getMyWorkspace() {
     return { tasks, songs, materials: [] as Material[], events, rehearsals: [] as Rehearsal[] };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return { tasks: [] as Task[], songs: [] as Song[], materials: [] as Material[], events: [] as Event[], rehearsals: [] as Rehearsal[] };
   }
 
   const [taskResult, materialResult, accessResult, rehearsalResult] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
-      .or(`assignee_id.eq.${user.id},created_by.eq.${user.id}`)
-      .order("due_date"),
-    supabase
-      .from("song_materials")
-      .select("*, material_backups(*)")
-      .eq("created_by", user.id),
-    supabase
-      .from("entity_access")
-      .select("entity_type,entity_id")
-      .eq("user_id", user.id),
-    supabase.from("rehearsals").select("*").order("starts_at"),
+    safeSupabaseQuery(
+      "my tasks",
+      supabase
+        .from("tasks")
+        .select("*, project:projects(id,title), assignee:profiles!assignee_id(id,full_name)")
+        .or(`assignee_id.eq.${user.id},created_by.eq.${user.id}`)
+        .order("due_date"),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery(
+      "my materials",
+      supabase
+        .from("song_materials")
+        .select("*, material_backups(*)")
+        .eq("created_by", user.id),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery(
+      "my access",
+      supabase
+        .from("entity_access")
+        .select("entity_type,entity_id")
+        .eq("user_id", user.id),
+      { data: [], error: null },
+    ),
+    safeSupabaseQuery("my rehearsals", supabase.from("rehearsals").select("*").order("starts_at"), { data: [], error: null }),
   ]);
   reportReadError("my tasks", taskResult.error);
   reportReadError("my materials", materialResult.error);
@@ -940,13 +1044,25 @@ export async function getMyWorkspace() {
 
   const [songResult, relatedMaterialsResult, eventResult] = await Promise.all([
     songIds.size
-      ? supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").in("id", [...songIds])
+      ? safeSupabaseQuery(
+          "my songs",
+          supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").in("id", [...songIds]),
+          { data: [], error: null },
+        )
       : Promise.resolve({ data: [], error: null }),
     songIds.size
-      ? supabase.from("song_materials").select("*, material_backups(*)").in("song_id", [...songIds])
+      ? safeSupabaseQuery(
+          "my related materials",
+          supabase.from("song_materials").select("*, material_backups(*)").in("song_id", [...songIds]),
+          { data: [], error: null },
+        )
       : Promise.resolve({ data: [], error: null }),
     eventIds.size
-      ? supabase.from("events").select("*").in("id", [...eventIds]).order("starts_at")
+      ? safeSupabaseQuery(
+          "my events",
+          supabase.from("events").select("*").in("id", [...eventIds]).order("starts_at"),
+          { data: [], error: null },
+        )
       : Promise.resolve({ data: [], error: null }),
   ]);
   reportReadError("my songs", songResult.error);

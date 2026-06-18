@@ -17,6 +17,7 @@ const allowedTables = [
   "finance_records",
 ] as const;
 type AllowedTable = (typeof allowedTables)[number];
+const ACTION_AUTH_TIMEOUT_MS = 3000;
 
 const numericFields = new Set([
   "bpm",
@@ -52,6 +53,28 @@ function readableError(message: string) {
   return message;
 }
 
+function withActionTimeout<T>(promise: Promise<T>, timeoutMs = ACTION_AUTH_TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
+function reportActionAuthError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    console.error("Supabase action auth error:", String(error ?? "Unknown error"));
+    return;
+  }
+  const typedError = error as { message?: string; name?: string; status?: number | string };
+  console.error("Supabase action auth error:", {
+    name: typedError.name ?? null,
+    status: typedError.status ?? null,
+    message: typedError.message ?? "Unknown error",
+  });
+}
+
 async function ensureAuthenticatedProfile() {
   const supabase = await createClient();
   if (!supabase) {
@@ -62,13 +85,18 @@ async function ensureAuthenticatedProfile() {
     };
   }
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  let user = null;
+  let authError = null;
+  try {
+    const result = await withActionTimeout(supabase.auth.getUser());
+    user = result.data.user;
+    authError = result.error;
+  } catch (error) {
+    authError = error;
+  }
 
   if (authError || !user) {
-    console.error("Supabase auth error:", authError);
+    reportActionAuthError(authError);
     return { error: "Сессия истекла. Войдите снова.", supabase, user: null };
   }
 
