@@ -321,5 +321,6 @@ export function SongAlbumEditor({ song, albums }: { song: Song; albums: Album[] 
     <label><span className="label">{t("albums.trackNumber")}</span><input className="field" type="number" min="1" name="track_number" defaultValue={song.track_number ?? ""} /></label>
     <button className="button-primary" disabled={pending}>{pending && <Loader2 size={14} className="animate-spin" />}{t("common.save")}</button>
     {state.error && <p className="text-xs text-red-300 sm:col-span-3">{state.error}</p>}
+    {state.success && <p className="flex items-center gap-2 text-xs text-emerald-300 sm:col-span-3"><CheckCircle2 size={14} />{t("albums.saved")}</p>}
   </form>;
 }

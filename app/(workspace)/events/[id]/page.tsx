@@ -13,6 +13,7 @@ import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
+import { DetailLoadError } from "@/components/detail-load-error";
 import { EventEditDialog } from "@/components/event-edit-dialog";
 import { EventTechRiderSelector } from "@/components/file-library-components";
 import { RedZone } from "@/components/red-zone";
@@ -71,7 +72,14 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       { data: null, error: null },
     ),
   ]);
-  if (eventResult.error || !eventResult.data) notFound();
+  if (eventResult.error) {
+    return <DetailLoadError
+      title={profile.locale === "en" ? "Could not load event" : "Не удалось загрузить концерт"}
+      description={profile.locale === "en" ? "Refresh the page. If the problem repeats, check Supabase connectivity." : "Обновите страницу. Если ошибка повторится, проверьте соединение с Supabase."}
+      actionLabel={profile.locale === "en" ? "Refresh" : "Обновить"}
+    />;
+  }
+  if (!eventResult.data) notFound();
   if (tasksResult.error) console.error("Supabase read event tasks error:", tasksResult.error);
   if (setlistResult.error) console.error("Supabase read event setlist error:", setlistResult.error);
 

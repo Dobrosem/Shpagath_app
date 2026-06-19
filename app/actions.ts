@@ -19,6 +19,8 @@ const allowedTables = [
 ] as const;
 type AllowedTable = (typeof allowedTables)[number];
 const ACTION_AUTH_TIMEOUT_MS = 3000;
+const ACTION_DB_TIMEOUT_MS = 4500;
+const ACTION_REVALIDATE_READ_TIMEOUT_MS = 1500;
 
 const numericFields = new Set([
   "bpm",
@@ -54,9 +56,9 @@ function readableError(message: string) {
   return message;
 }
 
-function withActionTimeout<T>(promise: Promise<T>, timeoutMs = ACTION_AUTH_TIMEOUT_MS): Promise<T> {
+function withActionTimeout<T>(promise: PromiseLike<T>, timeoutMs = ACTION_AUTH_TIMEOUT_MS): Promise<T> {
   return Promise.race([
-    promise,
+    Promise.resolve(promise),
     new Promise<T>((_, reject) => {
       setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
     }),
@@ -70,6 +72,20 @@ function reportActionAuthError(error: unknown) {
   }
   const typedError = error as { message?: string; name?: string; status?: number | string };
   console.error("Supabase action auth error:", {
+    name: typedError.name ?? null,
+    status: typedError.status ?? null,
+    message: typedError.message ?? "Unknown error",
+  });
+}
+
+function reportActionReadError(entity: string, error: unknown) {
+  if (!error || typeof error !== "object") {
+    console.error(`Supabase action ${entity} error:`, String(error ?? "Unknown error"));
+    return;
+  }
+  const typedError = error as { message?: string; name?: string; status?: number | string; code?: string };
+  console.error(`Supabase action ${entity} error:`, {
+    code: typedError.code ?? null,
     name: typedError.name ?? null,
     status: typedError.status ?? null,
     message: typedError.message ?? "Unknown error",
@@ -156,6 +172,7 @@ async function requireRole(
 ) {
   const role = await readCurrentRole(session);
   if (allowed(role)) return null;
+  console.error("Supabase action role denied:", { role: role ?? "unknown" });
   return localized(locale, "Недостаточно прав для этого действия.", "You do not have permission for this action.");
 }
 
@@ -165,12 +182,18 @@ async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: strin
   revalidatePath("/dashboard");
   revalidatePath("/my");
 
-  const { data, error } = await supabase
-    .from("setlist_items")
-    .select("setlist:setlists(event_id)")
-    .eq("song_id", songId);
+  const { data, error } = await withActionTimeout(
+    supabase
+      .from("setlist_items")
+      .select("setlist:setlists(event_id)")
+      .eq("song_id", songId),
+    ACTION_REVALIDATE_READ_TIMEOUT_MS,
+  ).catch((error) => {
+    reportActionReadError("read related song events", error);
+    return { data: [], error };
+  });
   if (error) {
-    console.error("Supabase read related song events error:", error);
+    reportActionReadError("read related song events", error);
     return;
   }
   const eventIds = new Set(
@@ -193,17 +216,6 @@ async function revalidateAlbumPaths(supabase: ServerSupabaseClient, albumId: str
   revalidatePath("/songs");
   revalidatePath("/dashboard");
   revalidatePath("/my");
-  const { data, error } = await supabase
-    .from("songs")
-    .select("id")
-    .eq("album_id", albumId);
-  if (error) {
-    console.error("Supabase read album songs for revalidation error:", error);
-    return;
-  }
-  for (const song of data ?? []) {
-    await revalidateSongPaths(supabase, song.id);
-  }
 }
 
 function localized(locale: Locale, ru: string, en: string) {
@@ -594,11 +606,17 @@ async function saveSongAlbum(
     return { success: false, error: localized(locale, "Номер трека должен быть положительным целым числом.", "Track number must be a positive whole number.") };
   }
   if (albumId) {
-    const { data: targetAlbum, error: albumError } = await session.supabase
-      .from("albums")
-      .select("id")
-      .eq("id", albumId)
-      .maybeSingle();
+    const { data: targetAlbum, error: albumError } = await withActionTimeout(
+      session.supabase
+        .from("albums")
+        .select("id")
+        .eq("id", albumId)
+        .maybeSingle(),
+      ACTION_DB_TIMEOUT_MS,
+    ).catch((error) => {
+      reportActionReadError("validate song album", error);
+      return { data: null, error };
+    });
     if (albumError || !targetAlbum) {
       return {
         success: false,
@@ -608,17 +626,29 @@ async function saveSongAlbum(
       };
     }
   }
-  const { data: currentSong } = await session.supabase
-    .from("songs")
-    .select("album_id")
-    .eq("id", songId)
-    .maybeSingle();
-  const { data, error } = await session.supabase
-    .from("songs")
-    .update({ album_id: albumId, track_number: albumId ? trackNumber : null })
-    .eq("id", songId)
-    .select("id")
-    .maybeSingle();
+  const { data: currentSong } = await withActionTimeout(
+    session.supabase
+      .from("songs")
+      .select("album_id")
+      .eq("id", songId)
+      .maybeSingle(),
+    ACTION_DB_TIMEOUT_MS,
+  ).catch((error) => {
+    reportActionReadError("read song before album assignment", error);
+    return { data: null, error };
+  });
+  const { data, error } = await withActionTimeout(
+    session.supabase
+      .from("songs")
+      .update({ album_id: albumId, track_number: albumId ? trackNumber : null })
+      .eq("id", songId)
+      .select("id")
+      .maybeSingle(),
+    ACTION_DB_TIMEOUT_MS,
+  ).catch((error) => {
+    reportActionReadError("update song album assignment", error);
+    return { data: null, error };
+  });
   if (error || !data) {
     if (error) console.error("Supabase assign song album error:", error);
     return {

@@ -5,18 +5,19 @@ import {
   AlbumEditDialog,
   AlbumSongsManager,
 } from "@/components/album-components";
+import { DetailLoadError } from "@/components/detail-load-error";
 import { RelatedContentCalendarPanel } from "@/components/content-calendar-components";
 import { RelatedCopyPanel } from "@/components/copy-components";
 import { RelatedFilesPanel } from "@/components/file-library-components";
 import { StatusBadge } from "@/components/ui";
-import { getAlbum, getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSongRelationOptions } from "@/lib/data";
+import { getAlbumReadResult, getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
 import { formatDate, getAlbumCoverUrl } from "@/lib/utils";
 
 export default async function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [album, songs, profile, relatedCopyItems, relatedFiles, events, albums, epks, copyItems, calendarItems, contentItems] = await Promise.all([
-    getAlbum(id),
+  const [albumResult, songs, profile, relatedCopyItems, relatedFiles, events, albums, epks, copyItems, calendarItems, contentItems] = await Promise.all([
+    getAlbumReadResult(id),
     getSongRelationOptions(),
     getProfile(),
     getRelatedCopyItems("album_id", id),
@@ -28,7 +29,15 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
     getRelatedContentCalendarItems("album_id", id),
     getContentCalendarItems(),
   ]);
-  if (!album) notFound();
+  if (albumResult.status === "error") {
+    return <DetailLoadError
+      title={profile.locale === "en" ? "Could not load album" : "Не удалось загрузить альбом"}
+      description={profile.locale === "en" ? "Refresh the page. If the problem repeats, check Supabase connectivity." : "Обновите страницу. Если ошибка повторится, проверьте соединение с Supabase."}
+      actionLabel={profile.locale === "en" ? "Refresh" : "Обновить"}
+    />;
+  }
+  if (albumResult.status === "not_found") notFound();
+  const album = albumResult.data;
   const t = translator(profile.locale);
   const availableSongs = songs.filter((song) => !song.album_id);
   const canEdit = ["admin", "member", "manager"].includes(profile.role);

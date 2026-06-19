@@ -52,6 +52,10 @@ function reportReadError(entity: string, error: unknown) {
 }
 
 type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+export type DetailReadResult<T> =
+  | { status: "ok"; data: T; error: null }
+  | { status: "not_found"; data: null; error: null }
+  | { status: "error"; data: null; error: { message: string; status?: number | string | null; code?: string | null } };
 type AuthUser = {
   id: string;
   email?: string | null;
@@ -68,6 +72,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
     }),
   ]);
+}
+
+function normalizedReadError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: String(error ?? "Unknown error"), status: null, code: null };
+  }
+  const typedError = error as { message?: string; name?: string; status?: number | string; code?: string };
+  return {
+    message: typedError.message ?? typedError.name ?? typedError.code ?? "Unknown error",
+    status: typedError.status ?? null,
+    code: typedError.code ?? null,
+  };
 }
 
 async function mapSettled<T, U>(
@@ -93,6 +109,12 @@ export async function safeSupabaseQuery<T>(
     return await withTimeout(Promise.resolve(query), timeoutMs);
   } catch (error) {
     reportReadError(entity, error);
+    if (fallback && typeof fallback === "object" && "error" in fallback) {
+      return {
+        ...fallback,
+        error: normalizedReadError(error),
+      } as T;
+    }
     return fallback as T;
   }
 }
@@ -252,7 +274,7 @@ export async function getSongsList(limit = 50): Promise<Song[]> {
     "songs list",
     supabase
       .from("songs")
-      .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,album:albums(id,title,type,status,cover_image_url)")
+      .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,cover_image_url,cover_status,album_id,track_number,created_at,updated_at,album:albums(id,title,type,status,cover_image_url)")
       .order("created_at", { ascending: false })
       .limit(limit),
     { data: [], error: null },
@@ -403,8 +425,13 @@ export async function getAlbumsList(limit = 60): Promise<Album[]> {
 }
 
 export async function getAlbum(id: string): Promise<Album | null> {
+  const result = await getAlbumReadResult(id);
+  return result.status === "ok" ? result.data : null;
+}
+
+export async function getAlbumReadResult(id: string): Promise<DetailReadResult<Album>> {
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (!supabase) return { status: "not_found", data: null, error: null };
   const { data, error } = await safeSupabaseQuery(
     "album",
     supabase
@@ -416,7 +443,8 @@ export async function getAlbum(id: string): Promise<Album | null> {
     { data: null, error: null },
   );
   reportReadError("album", error);
-  if (!data) return null;
+  if (error) return { status: "error", data: null, error: normalizedReadError(error) };
+  if (!data) return { status: "not_found", data: null, error: null };
   const album = data as Album;
   const albumCoverPromise = getStorageDisplayUrl(supabase, "album-covers", album.cover_image_url);
   const songsPromise = mapSettled(album.songs ?? [], "album songs signed URLs", async (song) => ({
@@ -425,10 +453,14 @@ export async function getAlbum(id: string): Promise<Album | null> {
   }));
   const [albumCoverResult, songsResult] = await Promise.allSettled([albumCoverPromise, songsPromise]);
   return {
+    status: "ok",
+    error: null,
+    data: {
     ...album,
     cover_display_url: albumCoverResult.status === "fulfilled" ? albumCoverResult.value : null,
     songs: songsResult.status === "fulfilled" ? songsResult.value : [],
     songs_count: album.songs?.length ?? 0,
+    },
   };
 }
 

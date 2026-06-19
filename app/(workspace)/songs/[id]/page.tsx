@@ -3,6 +3,7 @@ import { ArrowLeft, ExternalLink, FileAudio, FileMusic, FileText } from "lucide-
 import { notFound } from "next/navigation";
 import { TaskCard } from "@/components/cards";
 import { SongAlbumEditor } from "@/components/album-components";
+import { DetailLoadError } from "@/components/detail-load-error";
 import { EntityDialog } from "@/components/entity-dialog";
 import { RelatedFilesPanel } from "@/components/file-library-components";
 import { MaterialBackupEditor } from "@/components/material-backup-editor";
@@ -55,7 +56,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
   ] = await Promise.all([
     safeSupabaseQuery(
       "song detail",
-      supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").eq("id", id).single(),
+      supabase.from("songs").select("*, album:albums(id,title,type,status,cover_image_url)").eq("id", id).maybeSingle(),
       { data: null, error: null },
     ),
     safeSupabaseQuery(
@@ -85,8 +86,15 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
       { data: null, error: null, count: 0 },
     ),
   ]);
-  if (songError || !realSong) {
+  if (songError) {
     console.error("Supabase read song error:", songError);
+    return <DetailLoadError
+      title={profile.locale === "en" ? "Could not load song" : "Не удалось загрузить песню"}
+      description={profile.locale === "en" ? "Refresh the page. If the problem repeats, check Supabase connectivity." : "Обновите страницу. Если ошибка повторится, проверьте соединение с Supabase."}
+      actionLabel={profile.locale === "en" ? "Refresh" : "Обновить"}
+    />;
+  }
+  if (!realSong) {
     notFound();
   }
   if (materialsError) console.error("Supabase read song materials error:", materialsError);

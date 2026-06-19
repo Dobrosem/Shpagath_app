@@ -127,6 +127,8 @@ export interface Song {
   cover_notes?: string | null;
   album_id?: string | null;
   track_number?: number | null;
+  created_at?: string;
+  updated_at?: string;
   album?: Pick<Album, "id" | "title" | "type" | "status" | "cover_image_url" | "cover_display_url"> | null;
   materials_count?: number;
   missing_backups_count?: number;
