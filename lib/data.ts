@@ -979,6 +979,275 @@ export async function getRedZoneIssues(eventId?: string): Promise<RedZoneIssue[]
   });
 }
 
+export interface MyPageSummary {
+  tasks: Task[];
+  songs: Song[];
+  materials: Material[];
+  events: Event[];
+  rehearsals: Rehearsal[];
+  issues: RedZoneIssue[];
+  loadFailed: {
+    tasks: boolean;
+    songs: boolean;
+    materials: boolean;
+    events: boolean;
+    rehearsals: boolean;
+    redZone: boolean;
+  };
+}
+
+const myPageQueryFailed = { message: "My page query timed out or failed", status: null };
+
+function emptyMyPageSummary(loadFailed: Partial<MyPageSummary["loadFailed"]> = {}): MyPageSummary {
+  return {
+    tasks: [],
+    songs: [],
+    materials: [],
+    events: [],
+    rehearsals: [],
+    issues: [],
+    loadFailed: {
+      tasks: false,
+      songs: false,
+      materials: false,
+      events: false,
+      rehearsals: false,
+      redZone: false,
+      ...loadFailed,
+    },
+  };
+}
+
+function hasReadFailure(result: { error?: unknown }) {
+  return Boolean(result.error);
+}
+
+export async function getMyPageSummary(): Promise<MyPageSummary> {
+  const supabase = await createClient();
+  if (!supabase) {
+    return {
+      ...emptyMyPageSummary(),
+      tasks: tasks.slice(0, 12),
+      songs: songs.slice(0, 4).map((song) => ({ ...song, cover_display_url: null })),
+      events: events.slice(0, 4).map((event) => ({ ...event, poster_display_url: null })),
+    };
+  }
+
+  const user = await getCurrentUser();
+  if (!user) return emptyMyPageSummary();
+
+  const [taskResult, materialResult, accessResult, rehearsalResult] = await Promise.all([
+    safeSupabaseQuery(
+      "my page tasks",
+      supabase
+        .from("tasks")
+        .select("id,title,description,status,priority,due_date,project_id,song_id,event_id,assignee_id,created_by,project:projects(id,title),assignee:profiles!assignee_id(id,full_name),event:events(id,title,city,starts_at),song:songs(id,title)")
+        .or(`assignee_id.eq.${user.id},created_by.eq.${user.id}`)
+        .neq("status", "cancelled")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .limit(24),
+      { data: [], error: myPageQueryFailed },
+      4500,
+    ),
+    safeSupabaseQuery(
+      "my page materials",
+      supabase
+        .from("song_materials")
+        .select("id,song_id,type,title,url,version,status,created_by,material_backups(status)")
+        .eq("created_by", user.id)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(8),
+      { data: [], error: myPageQueryFailed },
+      4500,
+    ),
+    safeSupabaseQuery(
+      "my page access",
+      supabase
+        .from("entity_access")
+        .select("entity_type,entity_id")
+        .eq("user_id", user.id)
+        .in("entity_type", ["song", "event", "rehearsal"])
+        .limit(60),
+      { data: [], error: myPageQueryFailed },
+      4500,
+    ),
+    safeSupabaseQuery(
+      "my page rehearsals",
+      supabase
+        .from("rehearsals")
+        .select("id,title,starts_at,location,status,participants")
+        .contains("participants", [user.id])
+        .order("starts_at", { ascending: true })
+        .limit(5),
+      { data: [], error: myPageQueryFailed },
+      4500,
+    ),
+  ]);
+
+  reportReadError("my page tasks", taskResult.error);
+  reportReadError("my page materials", materialResult.error);
+  reportReadError("my page access", accessResult.error);
+  reportReadError("my page rehearsals", rehearsalResult.error);
+
+  const myTasks = (((taskResult.data ?? []) as unknown) as Task[]).map((task) => ({
+    ...task,
+    project: Array.isArray(task.project) ? task.project[0] : task.project,
+    assignee: Array.isArray(task.assignee) ? task.assignee[0] : task.assignee,
+    event: Array.isArray(task.event) ? task.event[0] : task.event,
+    song: Array.isArray(task.song) ? task.song[0] : task.song,
+  })) as Task[];
+  const myMaterials = ((((materialResult.data ?? []) as unknown) as (Material & { material_backups?: MaterialBackup[] })[]).map((material) => ({
+    ...material,
+    backup: material.material_backups?.[0] ?? null,
+  })) as Material[]).slice(0, 8);
+  const access = accessResult.data ?? [];
+  const songIds = [
+    ...new Set([
+      ...myTasks.map((task) => task.song_id).filter(Boolean),
+      ...myMaterials.map((material) => material.song_id),
+      ...access.filter((item) => item.entity_type === "song").map((item) => item.entity_id),
+    ] as string[]),
+  ].slice(0, 4);
+  const eventIds = [
+    ...new Set([
+      ...myTasks.map((task) => task.event_id).filter(Boolean),
+      ...access.filter((item) => item.entity_type === "event").map((item) => item.entity_id),
+    ] as string[]),
+  ].slice(0, 4);
+  const rehearsalIds = [
+    ...new Set(access.filter((item) => item.entity_type === "rehearsal").map((item) => item.entity_id) as string[]),
+  ].slice(0, 5);
+
+  const [songResult, eventResult, accessRehearsalResult] = await Promise.all([
+    songIds.length
+      ? safeSupabaseQuery(
+          "my page songs",
+          supabase
+            .from("songs")
+            .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,album_id,track_number,album:albums(id,title,type,status)")
+            .in("id", songIds),
+          { data: [], error: myPageQueryFailed },
+          4500,
+        )
+      : Promise.resolve({ data: [], error: null }),
+    eventIds.length
+      ? safeSupabaseQuery(
+          "my page events",
+          supabase
+            .from("events")
+            .select("id,title,city,venue,starts_at,status,ticket_url,tech_rider_file_id,tech_rider_url,call_time,soundcheck_time,performance_time")
+            .in("id", eventIds)
+            .order("starts_at", { ascending: true }),
+          { data: [], error: myPageQueryFailed },
+          4500,
+        )
+      : Promise.resolve({ data: [], error: null }),
+    rehearsalIds.length
+      ? safeSupabaseQuery(
+          "my page access rehearsals",
+          supabase
+            .from("rehearsals")
+            .select("id,title,starts_at,location,status,participants")
+            .in("id", rehearsalIds)
+            .order("starts_at", { ascending: true }),
+          { data: [], error: myPageQueryFailed },
+          4500,
+        )
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  reportReadError("my page songs", songResult.error);
+  reportReadError("my page events", eventResult.error);
+  reportReadError("my page access rehearsals", accessRehearsalResult.error);
+
+  const mySongs = ((songResult.data ?? []).map((song) => {
+    const album = Array.isArray(song.album) ? song.album[0] : song.album;
+    return {
+      ...song,
+      album: album ?? null,
+      cover_display_url: null,
+      materials_count: 0,
+      missing_backups_count: 0,
+    };
+  }) as Song[]);
+  const myEvents = ((eventResult.data ?? []).map((event) => ({
+    ...event,
+    poster_display_url: null,
+  })) as Event[]);
+  const rehearsalsById = new Map<string, Rehearsal>();
+  for (const rehearsal of (rehearsalResult.data as Rehearsal[]) ?? []) rehearsalsById.set(rehearsal.id, rehearsal);
+  for (const rehearsal of (accessRehearsalResult.data as Rehearsal[]) ?? []) rehearsalsById.set(rehearsal.id, rehearsal);
+
+  let setlistEventIds = new Set<string>();
+  let riderFileEventIds = new Set<string>();
+  let redZoneFailed = false;
+  if (myEvents.length) {
+    const eventIdList = myEvents.map((event) => event.id);
+    const [setlistResult, riderResult] = await Promise.all([
+      safeSupabaseQuery(
+        "my page red zone setlists",
+        supabase
+          .from("setlists")
+          .select("event_id, setlist_items(count)")
+          .in("event_id", eventIdList),
+        { data: [], error: myPageQueryFailed },
+        3500,
+      ),
+      safeSupabaseQuery(
+        "my page red zone rider files",
+        supabase
+          .from("files")
+          .select("event_id")
+          .eq("file_type", "tech_rider")
+          .in("event_id", eventIdList),
+        { data: [], error: myPageQueryFailed },
+        3500,
+      ),
+    ]);
+    reportReadError("my page red zone setlists", setlistResult.error);
+    reportReadError("my page red zone rider files", riderResult.error);
+    redZoneFailed = hasReadFailure(setlistResult) || hasReadFailure(riderResult);
+    setlistEventIds = new Set(
+      (setlistResult.data ?? [])
+        .filter((setlist) => (setlist.setlist_items?.[0]?.count ?? 0) > 0)
+        .map((setlist) => setlist.event_id as string),
+    );
+    riderFileEventIds = new Set(
+      (riderResult.data ?? [])
+        .map((file) => file.event_id as string | null)
+        .filter((id): id is string => Boolean(id)),
+    );
+  }
+
+  const issues = buildRedZoneIssues({
+    tasks: myTasks,
+    events: myEvents,
+    promo: [],
+    materials: [],
+    backups: [],
+    setlistEventIds,
+    riderFileEventIds,
+  });
+
+  return {
+    tasks: myTasks,
+    songs: mySongs,
+    materials: myMaterials,
+    events: myEvents,
+    rehearsals: [...rehearsalsById.values()].slice(0, 5),
+    issues,
+    loadFailed: {
+      tasks: hasReadFailure(taskResult),
+      songs: hasReadFailure(songResult),
+      materials: hasReadFailure(materialResult),
+      events: hasReadFailure(eventResult),
+      rehearsals: hasReadFailure(rehearsalResult) || hasReadFailure(accessRehearsalResult),
+      redZone: redZoneFailed,
+    },
+  };
+}
+
 export async function getMyWorkspace() {
   const supabase = await createClient();
   if (!supabase) {
