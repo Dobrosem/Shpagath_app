@@ -57,7 +57,8 @@ type AuthUser = {
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
 };
-const AUTH_USER_TIMEOUT_MS = 3000;
+const AUTH_USER_TIMEOUT_MS = 2000;
+const PROFILE_READ_TIMEOUT_MS = 2500;
 const DB_READ_TIMEOUT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -128,6 +129,7 @@ export const getProfile = cache(async (): Promise<Profile> => {
       .eq("id", user.id)
       .maybeSingle(),
     { data: null, error: null },
+    PROFILE_READ_TIMEOUT_MS,
   );
 
   if (!data) {
@@ -135,6 +137,7 @@ export const getProfile = cache(async (): Promise<Profile> => {
       "ensure_profile",
       supabase.rpc("ensure_profile"),
       { data: null, error: null },
+      PROFILE_READ_TIMEOUT_MS,
     );
     reportReadError("ensure_profile", ensureError);
     if (!ensureError) {
@@ -146,6 +149,7 @@ export const getProfile = cache(async (): Promise<Profile> => {
           .eq("id", user.id)
           .single(),
         { data: null, error: null },
+        PROFILE_READ_TIMEOUT_MS,
       );
       data = result.data;
       error = result.error;
@@ -1041,13 +1045,13 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
       "my page tasks",
       supabase
         .from("tasks")
-        .select("id,title,description,status,priority,due_date,project_id,song_id,event_id,assignee_id,created_by,project:projects(id,title),assignee:profiles!assignee_id(id,full_name),event:events(id,title,city,starts_at),song:songs(id,title)")
+        .select("id,title,description,status,priority,due_date,project_id,song_id,event_id,assignee_id,created_by")
         .or(`assignee_id.eq.${user.id},created_by.eq.${user.id}`)
         .neq("status", "cancelled")
         .order("due_date", { ascending: true, nullsFirst: false })
-        .limit(24),
+        .limit(18),
       { data: [], error: myPageQueryFailed },
-      4500,
+      3000,
     ),
     safeSupabaseQuery(
       "my page materials",
@@ -1059,7 +1063,7 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
         .order("created_at", { ascending: false })
         .limit(8),
       { data: [], error: myPageQueryFailed },
-      4500,
+      3000,
     ),
     safeSupabaseQuery(
       "my page access",
@@ -1070,18 +1074,18 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
         .in("entity_type", ["song", "event", "rehearsal"])
         .limit(60),
       { data: [], error: myPageQueryFailed },
-      4500,
+      3000,
     ),
     safeSupabaseQuery(
       "my page rehearsals",
       supabase
         .from("rehearsals")
-        .select("id,title,starts_at,location,status,participants")
+        .select("id,title,starts_at,location,participants")
         .contains("participants", [user.id])
         .order("starts_at", { ascending: true })
         .limit(5),
       { data: [], error: myPageQueryFailed },
-      4500,
+      3000,
     ),
   ]);
 
@@ -1128,7 +1132,7 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
             .select("id,title,subtitle,status,bpm,key,tuning,time_signature,duration,arrangement_version,album_id,track_number,album:albums(id,title,type,status)")
             .in("id", songIds),
           { data: [], error: myPageQueryFailed },
-          4500,
+          3000,
         )
       : Promise.resolve({ data: [], error: null }),
     eventIds.length
@@ -1140,7 +1144,7 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
             .in("id", eventIds)
             .order("starts_at", { ascending: true }),
           { data: [], error: myPageQueryFailed },
-          4500,
+          3000,
         )
       : Promise.resolve({ data: [], error: null }),
     rehearsalIds.length
@@ -1148,11 +1152,11 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
           "my page access rehearsals",
           supabase
             .from("rehearsals")
-            .select("id,title,starts_at,location,status,participants")
+            .select("id,title,starts_at,location,participants")
             .in("id", rehearsalIds)
             .order("starts_at", { ascending: true }),
           { data: [], error: myPageQueryFailed },
-          4500,
+          3000,
         )
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -1192,7 +1196,7 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
           .select("event_id, setlist_items(count)")
           .in("event_id", eventIdList),
         { data: [], error: myPageQueryFailed },
-        3500,
+        2500,
       ),
       safeSupabaseQuery(
         "my page red zone rider files",
@@ -1202,7 +1206,7 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
           .eq("file_type", "tech_rider")
           .in("event_id", eventIdList),
         { data: [], error: myPageQueryFailed },
-        3500,
+        2500,
       ),
     ]);
     reportReadError("my page red zone setlists", setlistResult.error);
