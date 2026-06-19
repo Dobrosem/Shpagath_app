@@ -5,6 +5,7 @@ import { SetlistBuilder } from "@/components/setlist-builder";
 import { PageHeader } from "@/components/ui";
 import { getEventSetlist, getProfile, getSetlistSongOptions, safeSupabaseQuery } from "@/lib/data";
 import { translator } from "@/lib/i18n";
+import { canDeleteOperationalData } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function EventSetlistPage({
@@ -33,6 +34,7 @@ export default async function EventSetlistPage({
   if (error || !event) notFound();
 
   const t = translator(profile.locale);
+  const canEdit = canDeleteOperationalData(profile.role);
   const sortedSongs = [...songs].sort((a, b) =>
     a.title.localeCompare(b.title, profile.locale),
   );
@@ -49,10 +51,10 @@ export default async function EventSetlistPage({
         <Printer size={14} />{t("printSetlist.printSetlist")}
       </Link>}
     />
-    <SetlistBuilder
+    {canEdit ? <SetlistBuilder
       eventId={id}
       songs={sortedSongs}
       initialItems={setlist?.items ?? []}
-    />
+    /> : <section className="metal-card p-6 text-sm text-zinc-500">{profile.locale === "en" ? "Only administrators and managers can edit setlists." : "Редактировать сетлисты могут только администраторы и менеджеры."}</section>}
   </>;
 }

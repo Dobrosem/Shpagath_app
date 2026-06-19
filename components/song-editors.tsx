@@ -178,9 +178,11 @@ export function SongLiveEditor({ song }: { song: Song }) {
 export function SongMaterialEditor({
   material,
   materialTypes,
+  canDelete,
 }: {
   material: Material;
   materialTypes: string[];
+  canDelete: boolean;
 }) {
   const { locale, t } = useI18n();
   const router = useRouter();
@@ -230,7 +232,7 @@ export function SongMaterialEditor({
           {(state.error || deleteError) && <p className="text-xs text-red-300 sm:col-span-2">{state.error || deleteError}</p>}
           {state.success && <p className="flex items-center gap-2 text-xs text-emerald-300 sm:col-span-2"><CheckCircle2 size={14} />{t("materialEdit.saved")}</p>}
           <div className="flex flex-wrap justify-between gap-2 sm:col-span-2">
-            <button type="button" className="button-secondary border-red-500/20 text-red-300" disabled={deleting} onClick={remove}><Trash2 size={14} />{t("materialEdit.delete")}</button>
+            {canDelete ? <button type="button" className="button-secondary border-red-500/20 text-red-300" disabled={deleting} onClick={remove}><Trash2 size={14} />{t("materialEdit.delete")}</button> : <span />}
             <div className="flex gap-2">
               <button type="button" className="button-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
               <button className="button-primary" disabled={pending}>{pending && <Loader2 size={14} className="animate-spin" />}{t("materialEdit.save")}</button>

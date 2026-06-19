@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
 import type { Event, Task } from "@/lib/types";
 import { getEventPosterUrl } from "@/lib/utils";
+import { canDeleteOperationalData } from "@/lib/roles";
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -86,7 +87,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   const posterUrl = getEventPosterUrl(event);
   const eventTasks = (tasksResult.data as Task[]) ?? [];
   const setlistItems = setlistResult.data?.items ?? [];
-  const canEdit = ["admin", "member", "manager"].includes(profile.role);
+  const canEdit = canDeleteOperationalData(profile.role);
   const locale = profile.locale === "en" ? "en-US" : "ru-RU";
   const startsAt = new Date(event.starts_at);
   const eventDate = new Intl.DateTimeFormat(locale, {
@@ -137,17 +138,17 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/20" />
       <div className="relative flex min-h-[320px] flex-col justify-between p-4 sm:min-h-[380px] sm:p-7">
         <div className="flex flex-wrap items-start justify-end gap-2">
-          <EventEditDialog
+          {canEdit && <EventEditDialog
             event={event}
             setlistNotes={setlistResult.data?.notes}
             triggerClassName="button-secondary min-h-10 border-white/15 bg-black/45 px-3 text-white backdrop-blur-md hover:bg-black/65"
-          />
-          <EventEditDialog
+          />}
+          {canEdit && <EventEditDialog
             event={event}
             setlistNotes={setlistResult.data?.notes}
             trigger="poster"
             triggerClassName="button-secondary min-h-10 border-white/15 bg-black/45 px-3 text-white backdrop-blur-md hover:bg-black/65"
-          />
+          />}
         </div>
         <div className="max-w-3xl">
           <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -168,7 +169,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     </section>
 
     <div className="mb-5 flex flex-wrap gap-2">
-      <TemplateTaskButton eventId={id} />
+      {canEdit && <TemplateTaskButton eventId={id} />}
       <Link href={`/events/${id}/battle-sheet`} className="button-primary">
         <ShieldAlert size={15} />{t("event.battleSheet")}
       </Link>
@@ -261,9 +262,9 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
               >
                 <FileDown size={15} />
               </a>
-              <Link href={`/events/${id}/setlist`} className="button-secondary">
+              {canEdit && <Link href={`/events/${id}/setlist`} className="button-secondary">
                 {setlistItems.length ? t("setlistBuilder.edit") : t("setlistBuilder.build")}
-              </Link>
+              </Link>}
             </div>
           </div>
           <ol className="mt-4 divide-y divide-white/[.06]">

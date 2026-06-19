@@ -51,7 +51,13 @@ create policy profiles_self_insert on public.profiles
 for insert to authenticated
 with check (id = auth.uid() and role = 'guest');
 
--- Finance: workspace members may read, only admins may mutate.
+drop policy if exists profiles_self_update on public.profiles;
+create policy profiles_self_update on public.profiles
+for update to authenticated
+using (id = auth.uid())
+with check (id = auth.uid() and role = public.current_role());
+
+-- Finance: only admins may read or mutate.
 drop policy if exists finance_access on public.finance_records;
 drop policy if exists finance_read on public.finance_records;
 drop policy if exists finance_insert on public.finance_records;
@@ -59,7 +65,7 @@ drop policy if exists finance_update on public.finance_records;
 drop policy if exists finance_delete on public.finance_records;
 create policy finance_read on public.finance_records
 for select to authenticated
-using (public.current_role() in ('admin', 'manager', 'member'));
+using (public.current_role() = 'admin');
 create policy finance_insert on public.finance_records
 for insert to authenticated
 with check (public.current_role() = 'admin');
@@ -154,41 +160,41 @@ create policy setlist_items_delete on public.setlist_items
 for delete to authenticated
 using (public.current_role() in ('admin', 'manager'));
 
--- Hidden file attachment library: only admin/manager can hard-delete records.
+-- Hidden file attachment library: only admin can hard-delete records.
 drop policy if exists files_workspace_delete on public.files;
 create policy files_workspace_delete on public.files
 for delete to authenticated
-using (public.current_role() in ('admin', 'manager'));
+using (public.current_role() = 'admin');
 
--- Copy/calendar records are operational content, but hard delete stays elevated.
+-- Copy/calendar records are operational content, but hard delete stays admin-only.
 drop policy if exists copy_items_workspace_delete on public.copy_items;
 create policy copy_items_workspace_delete on public.copy_items
 for delete to authenticated
-using (public.current_role() in ('admin', 'manager'));
+using (public.current_role() = 'admin');
 
 drop policy if exists content_calendar_items_workspace_delete on public.content_calendar_items;
 create policy content_calendar_items_workspace_delete on public.content_calendar_items
 for delete to authenticated
-using (public.current_role() in ('admin', 'manager'));
+using (public.current_role() = 'admin');
 
 -- Storage deletes follow the same hard-delete rule. Read/write policies remain
 -- unchanged so regular members can still use normal workspace upload flows.
 drop policy if exists song_covers_internal_delete on storage.objects;
 create policy song_covers_internal_delete on storage.objects
 for delete to authenticated
-using (bucket_id = 'song-covers' and public.current_role() in ('admin', 'manager'));
+using (bucket_id = 'song-covers' and public.current_role() = 'admin');
 
 drop policy if exists event_posters_internal_delete on storage.objects;
 create policy event_posters_internal_delete on storage.objects
 for delete to authenticated
-using (bucket_id = 'event-posters' and public.current_role() in ('admin', 'manager'));
+using (bucket_id = 'event-posters' and public.current_role() = 'admin');
 
 drop policy if exists album_covers_authenticated_delete on storage.objects;
 create policy album_covers_authenticated_delete on storage.objects
 for delete to authenticated
-using (bucket_id = 'album-covers' and public.current_role() in ('admin', 'manager'));
+using (bucket_id = 'album-covers' and public.current_role() = 'admin');
 
 drop policy if exists file_library_authenticated_delete on storage.objects;
 create policy file_library_authenticated_delete on storage.objects
 for delete to authenticated
-using (bucket_id = 'file-library' and public.current_role() in ('admin', 'manager'));
+using (bucket_id = 'file-library' and public.current_role() = 'admin');

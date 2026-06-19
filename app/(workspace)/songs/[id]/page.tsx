@@ -18,6 +18,7 @@ import {
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getProfiles, getRelatedFiles, getSongRelationOptions, safeSupabaseQuery } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
+import { canDeleteCriticalData, canManageWorkspaceContent } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getStorageDisplayUrl } from "@/lib/storage";
 import type { Material, Song, Task } from "@/lib/types";
@@ -109,12 +110,13 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     backup: material.material_backups?.[0] ?? null,
   })) as Material[];
   const songTasks = (realTasks as Task[]) ?? [];
-  const canEdit = ["admin", "member", "manager"].includes(profile.role);
+  const canEdit = canManageWorkspaceContent(profile.role);
+  const canDelete = canDeleteCriticalData(profile.role);
 
   const overview = <div>
     <SongOverviewEditor song={song} />
     {canEdit && <SongAlbumEditor song={song} albums={albums} />}
-    <SongDangerZone songId={id} setlistUsageCount={setlistUsageCount ?? 0} />
+    {canDelete && <SongDangerZone songId={id} setlistUsageCount={setlistUsageCount ?? 0} />}
   </div>;
 
   const taskContent = <div>
@@ -169,7 +171,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
           <StatusBadge status={material.backup?.status ?? "missing_backup"} />
         </div>
         <div className="flex items-center gap-3">
-          <SongMaterialEditor material={material} materialTypes={materialTypes} />
+          <SongMaterialEditor material={material} materialTypes={materialTypes} canDelete={canDelete} />
           <MaterialBackupEditor materialId={material.id} songId={id} backup={material.backup} profiles={profiles} />
           {material.url && <a href={material.url} target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-white"><ExternalLink size={15} /></a>}
         </div>
@@ -202,7 +204,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
     <PageHeader
       eyebrow={song.subtitle ?? (profile.locale === "en" ? "Song" : "Песня")}
       title={song.title}
-      action={<EntityDialog
+      action={canEdit ? <EntityDialog
         title={profile.locale === "en" ? "Song material" : "Материал песни"}
         table="song_materials"
         path={`/songs/${id}`}
@@ -215,7 +217,7 @@ export default async function SongPage({ params }: { params: Promise<{ id: strin
           { name: "status", label: profile.locale === "en" ? "Status" : "Статус", type: "select", defaultValue: "draft", options: ["draft", "active", "approved", "outdated", "archived"].map((value) => ({ value, label: value })) },
           { name: "notes", label: profile.locale === "en" ? "Notes" : "Заметки", type: "textarea" },
         ]}
-      />}
+      /> : undefined}
     />
     <SongDetailTabs
       overview={overview}

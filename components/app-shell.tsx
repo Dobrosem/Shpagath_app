@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 import { useI18n } from "./i18n-provider";
 import { translateLiteral } from "@/lib/i18n";
+import { canManageFinance } from "@/lib/roles";
 
 const navigationGroups = [
   {
@@ -66,14 +67,14 @@ const mobileNavigation = [
   { href: "/events", key: "nav.events" as const, icon: CalendarDays },
 ];
 
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+function NavItems({ profile, onNavigate }: { profile: Profile; onNavigate?: () => void }) {
   const pathname = usePathname();
   const { t } = useI18n();
   return <nav className="space-y-5">
     {navigationGroups.map((group) => <section key={group.key}>
       <p className="mb-2 px-3 text-[9px] font-medium uppercase tracking-[.22em] text-zinc-700">{t(group.key)}</p>
       <div className="space-y-1">
-        {group.items.map(({ href, key, icon: Icon }) => {
+        {group.items.filter((item) => item.href !== "/finance" || canManageFinance(profile.role)).map(({ href, key, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return <Link key={href} href={href} onClick={onNavigate} className={cn("nav-item", active && "nav-item-active")}>
             <Icon size={17} strokeWidth={1.7} /><span>{t(key)}</span>
@@ -119,7 +120,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
       <div className="px-2"><Mark /></div>
       <div className="my-5 h-px bg-white/[.06]" />
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        <NavItems />
+        <NavItems profile={profile} />
       </div>
       <div className="mt-4 space-y-1 border-t border-white/[.06] pt-4">
         <button onClick={signOut} className="nav-item w-full"><LogOut size={17} />{t("nav.logout")}</button>
@@ -129,7 +130,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
     {open && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm lg:hidden">
       <aside className="h-full w-72 overflow-y-auto border-r border-white/10 bg-[#090a0a] p-5">
         <div className="mb-8 flex items-center justify-between"><Mark /><button type="button" aria-label={t("common.close")} onClick={() => setOpen(false)}><X /></button></div>
-        <NavItems onNavigate={() => setOpen(false)} />
+        <NavItems profile={profile} onNavigate={() => setOpen(false)} />
       </aside>
     </div>}
 

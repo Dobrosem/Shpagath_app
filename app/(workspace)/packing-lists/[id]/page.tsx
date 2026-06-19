@@ -5,6 +5,7 @@ import { PackingListItems } from "@/components/packing-list-items";
 import { PageHeader } from "@/components/ui";
 import { getPackingList, getProfile, getProfiles } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
+import { canDeleteOperationalData } from "@/lib/roles";
 
 export default async function PackingListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,6 +16,7 @@ export default async function PackingListPage({ params }: { params: Promise<{ id
   ]);
   if (!list) notFound();
   const t = translator(profile.locale);
+  const canEdit = canDeleteOperationalData(profile.role);
   const items = list.items ?? [];
   const packed = items.filter((item) => item.packed).length;
   const progress = items.length ? Math.round((packed / items.length) * 100) : 0;
@@ -33,7 +35,6 @@ export default async function PackingListPage({ params }: { params: Promise<{ id
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/5"><div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} /></div>
       </div>}
     />
-    <PackingListItems listId={id} items={items} profiles={profiles} />
+    <PackingListItems listId={id} items={items} profiles={profiles} canEdit={canEdit} />
   </>;
 }
-

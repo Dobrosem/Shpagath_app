@@ -18,10 +18,12 @@ export function PackingListItems({
   listId,
   items,
   profiles,
+  canEdit,
 }: {
   listId: string;
   items: PackingListItem[];
   profiles: Profile[];
+  canEdit: boolean;
 }) {
   const { locale, t } = useI18n();
   const [pending, startTransition] = useTransition();
@@ -37,8 +39,9 @@ export function PackingListItems({
           type="button"
           aria-label={t("packing.toggleItem")}
           title={t("packing.toggleItem")}
-          disabled={pending}
+          disabled={pending || !canEdit}
           onClick={() => startTransition(async () => {
+            if (!canEdit) return;
             await setPackingListItemPacked(listId, item.id, !item.packed);
           })}
           className={cn(
@@ -58,7 +61,7 @@ export function PackingListItems({
           </p>
           {item.notes && <p className="mt-2 text-xs text-zinc-500">{item.notes}</p>}
         </div>
-        <button
+        {canEdit && <button
           type="button"
           aria-label={t("packing.deleteItem")}
           title={t("packing.deleteItem")}
@@ -70,12 +73,12 @@ export function PackingListItems({
           className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-zinc-700 transition hover:bg-red-500/10 hover:text-red-300"
         >
           <Trash2 size={15} />
-        </button>
+        </button>}
       </div>)}
       {!items.length && <p className="p-10 text-center text-sm text-zinc-600">{t("packing.noItems")}</p>}
     </div>
 
-    <form action={action} className="metal-card grid gap-4 p-5 sm:grid-cols-2">
+    {canEdit && <form action={action} className="metal-card grid gap-4 p-5 sm:grid-cols-2">
       <h2 className="font-display text-lg uppercase text-white sm:col-span-2">{t("packing.addItem")}</h2>
       <label><span className="label">{t("packing.title")}</span><input className="field" name="title" required /></label>
       <label><span className="label">{t("packing.category")}</span>
@@ -99,6 +102,6 @@ export function PackingListItems({
           {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}{t("common.add")}
         </button>
       </div>
-    </form>
+    </form>}
   </div>;
 }

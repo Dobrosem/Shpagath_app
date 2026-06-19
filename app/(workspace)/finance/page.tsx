@@ -1,12 +1,22 @@
 import { EntityDialog } from "@/components/entity-dialog";
-import { Metric } from "@/components/ui";
+import { Metric, PageHeader } from "@/components/ui";
 import { SectionPage } from "@/components/section-page";
 import { getFinanceRecords, getProfile } from "@/lib/data";
+import { translator } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 import { translateEnum } from "@/lib/i18n";
+import { canManageFinance } from "@/lib/roles";
 
 export default async function FinancePage() {
-  const [records, profile] = await Promise.all([getFinanceRecords(), getProfile()]);
+  const profile = await getProfile();
+  const t = translator(profile.locale);
+  if (!canManageFinance(profile.role)) {
+    return <>
+      <PageHeader eyebrow={profile.locale === "en" ? "Accounting" : "Учёт"} title={t("page.finance.title")} description={t("finance.adminOnly")} />
+      <section className="metal-card p-6 text-sm text-zinc-500">{t("finance.adminOnly")}</section>
+    </>;
+  }
+  const records = await getFinanceRecords();
   const income = records.filter((record) => record.type === "income").reduce((sum, record) => sum + Number(record.amount), 0);
   const expense = records.filter((record) => record.type === "expense").reduce((sum, record) => sum + Number(record.amount), 0);
   const money = (value: number) => new Intl.NumberFormat(profile.locale === "en" ? "en-US" : "ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionState, ContentChannel, ContentStatus, ContentType, CopyCategory, CopyChannel, CopyStatus, FileStatus, FileType, Locale } from "@/lib/types";
+import { canDeleteCriticalData, canDeleteOperationalData, canManageFinance, canManageUsers, normalizeRole } from "@/lib/roles";
+import type { ActionState, ContentChannel, ContentStatus, ContentType, CopyCategory, CopyChannel, CopyStatus, FileStatus, FileType, Locale, Role } from "@/lib/types";
 
 const allowedTables = [
   "projects",
@@ -111,7 +112,7 @@ async function ensureAuthenticatedProfile() {
           String(user.user_metadata?.full_name ?? "") ||
           user.email?.split("@")[0] ||
           "Участник",
-        role: "member",
+        role: "guest",
         locale: "ru",
       },
       { onConflict: "id", ignoreDuplicates: true },
@@ -130,6 +131,33 @@ async function ensureAuthenticatedProfile() {
 }
 
 type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+
+async function readCurrentRole(session: { supabase: ServerSupabaseClient | null; user: { id: string } | null }) {
+  if (!session.supabase || !session.user) return null;
+  const { data, error } = await session.supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase read current action role error:", {
+      code: error.code,
+      message: error.message,
+    });
+    return null;
+  }
+  return normalizeRole(data?.role);
+}
+
+async function requireRole(
+  session: { supabase: ServerSupabaseClient | null; user: { id: string } | null },
+  allowed: (role: Role | null) => boolean,
+  locale: Locale,
+) {
+  const role = await readCurrentRole(session);
+  if (allowed(role)) return null;
+  return localized(locale, "Недостаточно прав для этого действия.", "You do not have permission for this action.");
+}
 
 async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: string) {
   revalidatePath("/songs");
@@ -203,6 +231,15 @@ async function insertEntity(
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase || !session.user) {
     return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  if (table === "finance_records") {
+    const accessError = await requireRole(session, canManageFinance, locale);
+    if (accessError) return { success: false, error: accessError };
+  }
+  if (table === "events" || table === "rehearsals") {
+    const accessError = await requireRole(session, canDeleteOperationalData, locale);
+    if (accessError) return { success: false, error: accessError };
   }
 
   const payload = cleanForm(formData);
@@ -495,6 +532,8 @@ export async function deleteAlbum(albumId: string, locale: Locale): Promise<Acti
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: album, error: readError } = await session.supabase
     .from("albums")
     .select("id,cover_image_url,songs(id)")
@@ -630,6 +669,15 @@ export async function updateEntity(
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
+  }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  if (table === "finance_records") {
+    const accessError = await requireRole(session, canManageFinance, locale);
+    if (accessError) return { success: false, error: accessError };
+  }
+  if (table === "events" || table === "rehearsals") {
+    const accessError = await requireRole(session, canDeleteOperationalData, locale);
+    if (accessError) return { success: false, error: accessError };
   }
   const payload = cleanForm(formData);
   const { error } = await session.supabase.from(table).update(payload).eq("id", id);
@@ -839,6 +887,8 @@ export async function deleteSongMaterial(
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data, error } = await session.supabase
     .from("song_materials")
     .delete()
@@ -972,6 +1022,8 @@ export async function deleteSong(songId: string, locale: Locale): Promise<Action
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: relatedItems, error: relatedError } = await session.supabase
     .from("setlist_items")
     .select("setlist:setlists(event_id)")
@@ -1045,6 +1097,8 @@ export async function updateEvent(
   const status = String(formData.get("status") ?? "").trim();
   const posterStatus = String(formData.get("poster_status") ?? "draft").trim();
   const locale = formData.get("locale") === "en" ? "en" : "ru";
+  const accessError = await requireRole(session, canDeleteOperationalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const allowedStatuses = new Set([
     "planned",
     "announced",
@@ -1277,6 +1331,8 @@ export async function saveEventSetlist(
   }
 
   const locale = formData.get("locale") === "en" ? "en" : "ru";
+  const accessError = await requireRole(session, canDeleteOperationalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const rawItems = String(formData.get("items") ?? "[]");
   let parsedItems: unknown;
   try {
@@ -1468,6 +1524,15 @@ export async function deleteEntity(
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const criticalTables = new Set<AllowedTable>(["songs", "song_materials", "events", "finance_records"]);
+  const operationalDeleteTables = new Set<AllowedTable>(["tasks", "rehearsals", "promo_materials"]);
+  const locale: Locale = "ru";
+  const accessError = criticalTables.has(table)
+    ? await requireRole(session, canDeleteCriticalData, locale)
+    : operationalDeleteTables.has(table)
+      ? await requireRole(session, canDeleteOperationalData, locale)
+      : null;
+  if (accessError) return { success: false, error: accessError };
   const { error } = await session.supabase.from(table).delete().eq("id", id);
   if (error) {
     console.error(`Supabase delete ${table} error:`, error);
@@ -1498,6 +1563,69 @@ export async function updateLocale(locale: Locale): Promise<ActionState> {
   return { success: true, error: null };
 }
 
+export async function updateUserRole(
+  profileId: string,
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const nextRole = normalizeRole(formData.get("role"));
+  if (!nextRole) {
+    return { success: false, error: localized(locale, "Выберите корректную роль.", "Select a valid role.") };
+  }
+
+  const session = await ensureAuthenticatedProfile();
+  if (session.error || !session.supabase || !session.user) {
+    return { success: false, error: session.error };
+  }
+  const accessError = await requireRole(session, canManageUsers, locale);
+  if (accessError) return { success: false, error: accessError };
+
+  const { data: target, error: readError } = await session.supabase
+    .from("profiles")
+    .select("id,role")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (readError || !target) {
+    return {
+      success: false,
+      error: readError
+        ? localizedReadableError(locale, readError.message)
+        : localized(locale, "Пользователь не найден.", "User not found."),
+    };
+  }
+
+  if (target.role === "admin" && nextRole !== "admin") {
+    const { count, error: countError } = await session.supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("role", "admin");
+    if (countError) {
+      return { success: false, error: localizedReadableError(locale, countError.message) };
+    }
+    if ((count ?? 0) <= 1) {
+      return {
+        success: false,
+        error: localized(locale, "Нельзя снять роль последнего администратора.", "You cannot demote the last administrator."),
+      };
+    }
+  }
+
+  const { error } = await session.supabase
+    .from("profiles")
+    .update({ role: nextRole })
+    .eq("id", profileId);
+  if (error) {
+    return { success: false, error: localizedReadableError(locale, error.message) };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/settings/users");
+  revalidatePath("/dashboard");
+  revalidatePath("/my");
+  return { success: true, error: null, id: profileId };
+}
+
 export async function createPackingList(
   _previousState: ActionState,
   formData: FormData,
@@ -1506,6 +1634,9 @@ export async function createPackingList(
   if (session.error || !session.supabase || !session.user) {
     return { success: false, error: session.error };
   }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const accessError = await requireRole(session, canDeleteOperationalData, locale);
+  if (accessError) return { success: false, error: accessError };
 
   const payload = cleanForm(formData);
   if (!payload.title || !payload.type) {
@@ -1580,6 +1711,9 @@ export async function addPackingListItem(
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
+  const accessError = await requireRole(session, canDeleteOperationalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const payload = cleanForm(formData);
   if (!payload.title) return { success: false, error: "Заполните название." };
   payload.packing_list_id = packingListId;
@@ -1603,6 +1737,8 @@ export async function setPackingListItemPacked(
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteOperationalData, "ru");
+  if (accessError) return { success: false, error: accessError };
   const { error } = await session.supabase
     .from("packing_list_items")
     .update({ packed })
@@ -1622,6 +1758,8 @@ export async function deletePackingListItem(
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteOperationalData, "ru");
+  if (accessError) return { success: false, error: accessError };
   const { error } = await session.supabase
     .from("packing_list_items")
     .delete()
@@ -1805,6 +1943,8 @@ export async function deleteTask(taskId: string, locale: Locale): Promise<Action
   if (session.error || !session.supabase) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteOperationalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data, error } = await session.supabase
     .from("tasks")
     .delete()
@@ -1833,6 +1973,8 @@ export async function createTasksFromTemplate(
   if (session.error || !session.supabase || !session.user) {
     return { success: false, error: session.error };
   }
+  const accessError = await requireRole(session, canDeleteOperationalData, "ru");
+  if (accessError) return { success: false, error: accessError };
 
   const eventResult = await session.supabase
     .from("events")
@@ -2035,6 +2177,8 @@ export async function deleteEpkProfile(
   const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: profile } = await session.supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle();
   const { error } = await session.supabase.from("epk_profiles").delete().eq("id", epkId);
   if (error) return { success: false, error: localizedReadableError(locale, error.message) };
@@ -2289,6 +2433,8 @@ export async function archiveCopyItem(copyItemId: string, locale: Locale): Promi
 export async function deleteCopyItem(copyItemId: string, locale: Locale): Promise<ActionState> {
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: current } = await session.supabase
     .from("copy_items")
     .select("event_id,album_id,song_id,epk_id")
@@ -2451,6 +2597,8 @@ export async function archiveContentCalendarItem(itemId: string, locale: Locale)
 export async function deleteContentCalendarItem(itemId: string, locale: Locale): Promise<ActionState> {
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: current } = await session.supabase
     .from("content_calendar_items")
     .select("copy_item_id,event_id,album_id,song_id,epk_id")
@@ -2772,6 +2920,8 @@ export async function archiveFileRecord(fileId: string, locale: Locale): Promise
 export async function deleteFileRecord(fileId: string, locale: Locale): Promise<ActionState> {
   const session = await ensureAuthenticatedProfile();
   if (session.error || !session.supabase || !session.user) return { success: false, error: session.error };
+  const accessError = await requireRole(session, canDeleteCriticalData, locale);
+  if (accessError) return { success: false, error: accessError };
   const { data: current, error: readError } = await session.supabase
     .from("files")
     .select("id,bucket,storage_path,event_id,album_id,song_id,epk_id,copy_item_id,content_calendar_item_id")

@@ -7,6 +7,7 @@ import { EpkMediaManager, EpkProfileEditor, EpkPublicLink } from "@/components/e
 import { RelatedFilesPanel, SharedDocumentsPanel } from "@/components/file-library-components";
 import { getAlbumRelationOptions, getContentCalendarItems, getCopyItems, getEpkProfile, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getRelatedCopyItems, getRelatedFiles, getSharedTechRiderFiles, getSongRelationOptions } from "@/lib/data";
 import { translator } from "@/lib/i18n";
+import { canDeleteCriticalData, canManageWorkspaceContent } from "@/lib/roles";
 
 export default async function EpkDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,7 +27,8 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
   ]);
   if (!epk) notFound();
   const t = translator(profile.locale);
-  const canEdit = ["admin", "manager", "member"].includes(profile.role);
+  const canEdit = canManageWorkspaceContent(profile.role);
+  const canDelete = canDeleteCriticalData(profile.role);
 
   return <>
     <Link href="/epk" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
@@ -44,7 +46,7 @@ export default async function EpkDetailPage({ params }: { params: Promise<{ id: 
     </div>
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <div className="space-y-5">
-        {canEdit ? <EpkProfileEditor epk={epk} canDelete={["admin", "manager"].includes(profile.role)} /> : <div className="metal-card p-6 text-sm text-zinc-500">{t("common.noData")}</div>}
+        {canEdit ? <EpkProfileEditor epk={epk} canDelete={canDelete} /> : <div className="metal-card p-6 text-sm text-zinc-500">{t("common.noData")}</div>}
         {canEdit && <EpkMediaManager epkId={epk.id} links={epk.media_links ?? []} />}
       </div>
       <aside className="space-y-5">

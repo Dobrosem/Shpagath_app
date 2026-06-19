@@ -5,6 +5,7 @@ import { RelatedContentCalendarPanel } from "@/components/content-calendar-compo
 import { CopyItemEditor } from "@/components/copy-components";
 import { getAlbumRelationOptions, getCopyItem, getCopyItems, getEpkProfiles, getEventRelationOptions, getProfile, getRelatedContentCalendarItems, getSongRelationOptions } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
+import { canDeleteCriticalData, canManageWorkspaceContent } from "@/lib/roles";
 
 export default async function CopyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,7 +23,8 @@ export default async function CopyDetailPage({ params }: { params: Promise<{ id:
   const t = translator(profile.locale);
   const options = { events, albums, songs, epks };
   const calendarOptions = { copyItems, events, albums, songs, epks };
-  const canEdit = ["admin", "manager", "member"].includes(profile.role);
+  const canEdit = canManageWorkspaceContent(profile.role);
+  const canDelete = canDeleteCriticalData(profile.role);
 
   return <>
     <Link href="/copy" className="mb-5 inline-flex items-center gap-2 text-xs text-zinc-600 hover:text-white">
@@ -35,7 +37,7 @@ export default async function CopyDetailPage({ params }: { params: Promise<{ id:
         {[item.channel ? translateEnum(profile.locale, item.channel) : null, item.language.toUpperCase(), translateEnum(profile.locale, item.status)].filter(Boolean).join(" · ")}
       </p>
     </header>
-    <CopyItemEditor item={item} options={options} canDelete={canEdit} />
+    {canEdit ? <CopyItemEditor item={item} options={options} canDelete={canDelete} /> : <div className="metal-card p-6 text-sm text-zinc-500">{t("common.noData")}</div>}
     <div className="mt-5">
       <RelatedContentCalendarPanel
         title={t("contentCalendar.scheduledPosts")}

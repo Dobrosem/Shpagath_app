@@ -4,6 +4,7 @@ import { EntityDialog } from "@/components/entity-dialog";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { getEventRelationOptions, getPackingLists, getProfile, getProjects } from "@/lib/data";
 import { translateEnum, translator } from "@/lib/i18n";
+import { canDeleteOperationalData } from "@/lib/roles";
 
 export default async function PackingListsPage() {
   const [lists, events, projects, profile] = await Promise.all([
@@ -13,12 +14,13 @@ export default async function PackingListsPage() {
     getProfile(),
   ]);
   const t = translator(profile.locale);
+  const canCreate = canDeleteOperationalData(profile.role);
 
   return <>
     <PageHeader
       title={t("page.packingLists.title")}
       description={t("page.packingLists.description")}
-      action={<EntityDialog
+      action={canCreate ? <EntityDialog
         title={t("packing.new")}
         table="packing_lists"
         path="/packing-lists"
@@ -29,7 +31,7 @@ export default async function PackingListsPage() {
           { name: "event_id", label: t("packing.event"), type: "select", options: events.map((event) => ({ value: event.id, label: event.title })) },
           { name: "project_id", label: t("packing.project"), type: "select", options: projects.map((project) => ({ value: project.id, label: project.title })) },
         ]}
-      />}
+      /> : undefined}
     />
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {lists.map((list) => {
