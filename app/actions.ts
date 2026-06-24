@@ -121,6 +121,38 @@ function reportActionMutationError(
   });
 }
 
+function safeRevalidatePath(path: string, type?: "layout" | "page") {
+  try {
+    if (type) revalidatePath(path, type);
+    else revalidatePath(path);
+  } catch (error) {
+    reportActionMutationError("revalidate path", {
+      action: "safeRevalidatePath",
+      operation: path,
+      eventId: null,
+      setlistId: null,
+    }, error);
+  }
+}
+
+async function runActionQuery<T extends { error: unknown }>(
+  action: string,
+  operation: string,
+  query: PromiseLike<T>,
+  timeoutMs = ACTION_DB_TIMEOUT_MS,
+) {
+  try {
+    const result = await withActionTimeout(query, timeoutMs);
+    if (result.error) {
+      reportActionMutationError(action, { action, operation }, result.error);
+    }
+    return result;
+  } catch (error) {
+    reportActionMutationError(action, { action, operation }, error);
+    return { error } as T;
+  }
+}
+
 async function ensureAuthenticatedProfile() {
   const supabase = await createClient();
   if (!supabase) {
@@ -226,10 +258,10 @@ async function requireRole(
 }
 
 async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: string) {
-  revalidatePath("/songs");
-  revalidatePath(`/songs/${songId}`);
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath("/songs");
+  safeRevalidatePath(`/songs/${songId}`);
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
 
   const { data, error } = await withActionTimeout(
     supabase
@@ -253,18 +285,18 @@ async function revalidateSongPaths(supabase: ServerSupabaseClient, songId: strin
     }),
   );
   for (const eventId of eventIds) {
-    revalidatePath(`/events/${eventId}`);
-    revalidatePath(`/events/${eventId}/battle-sheet`);
-    revalidatePath(`/events/${eventId}/setlist`);
+    safeRevalidatePath(`/events/${eventId}`);
+    safeRevalidatePath(`/events/${eventId}/battle-sheet`);
+    safeRevalidatePath(`/events/${eventId}/setlist`);
   }
 }
 
 async function revalidateAlbumPaths(supabase: ServerSupabaseClient, albumId: string) {
-  revalidatePath("/albums");
-  revalidatePath(`/albums/${albumId}`);
-  revalidatePath("/songs");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath("/albums");
+  safeRevalidatePath(`/albums/${albumId}`);
+  safeRevalidatePath("/songs");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
 }
 
 function localized(locale: Locale, ru: string, en: string) {
@@ -338,9 +370,9 @@ async function insertEntity(
     return { success: false, error: readableError(error.message) };
   }
 
-  revalidatePath(path);
-  revalidatePath("/dashboard");
-  if (payload.project_id) revalidatePath(`/projects/${payload.project_id}`);
+  safeRevalidatePath(path);
+  safeRevalidatePath("/dashboard");
+  if (payload.project_id) safeRevalidatePath(`/projects/${payload.project_id}`);
   if (table === "song_materials" && payload.song_id) {
     await revalidateSongPaths(session.supabase, String(payload.song_id));
   }
@@ -463,8 +495,8 @@ export async function createAlbum(
     console.error("Supabase create album error:", error, result.payload);
     return { success: false, error: localizedReadableError(locale, error.message) };
   }
-  revalidatePath("/albums");
-  revalidatePath("/songs");
+  safeRevalidatePath("/albums");
+  safeRevalidatePath("/songs");
   return { success: true, error: null, id: data.id };
 }
 
@@ -480,14 +512,17 @@ export async function updateAlbum(
   const locale: Locale = formData.get("locale") === "en" ? "en" : "ru";
   const result = albumPayload(formData, locale);
   if (!result.payload) return { success: false, error: result.error };
-  const { data, error } = await session.supabase
-    .from("albums")
-    .update(result.payload)
-    .eq("id", albumId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await runActionQuery(
+    "updateAlbum",
+    "update album",
+    session.supabase
+      .from("albums")
+      .update(result.payload)
+      .eq("id", albumId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error) {
-    console.error("Supabase update album error:", error, result.payload);
     return { success: false, error: localizedReadableError(locale, error.message) };
   }
   if (!data) {
@@ -566,17 +601,20 @@ export async function updateAlbumCover(
     cover_notes: String(formData.get("cover_notes") ?? "").trim() || null,
   };
   if (coverImageUrl !== undefined) payload.cover_image_url = coverImageUrl;
-  const { data, error } = await session.supabase
-    .from("albums")
-    .update(payload)
-    .eq("id", albumId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await runActionQuery(
+    "updateAlbumCover",
+    "update album cover",
+    session.supabase
+      .from("albums")
+      .update(payload)
+      .eq("id", albumId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error || !data) {
     if (uploadedStoragePath) {
       await session.supabase.storage.from("album-covers").remove([uploadedStoragePath]);
     }
-    if (error) console.error("Supabase update album cover error:", error, payload);
     return {
       success: false,
       error: error
@@ -625,10 +663,10 @@ export async function deleteAlbum(albumId: string, locale: Locale): Promise<Acti
         : localized(locale, "Нет прав на удаление альбома.", "You do not have permission to delete this album."),
     };
   }
-  revalidatePath("/albums");
-  revalidatePath("/songs");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath("/albums");
+  safeRevalidatePath("/songs");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
   for (const songId of songIds) await revalidateSongPaths(session.supabase, songId);
   const prefix = "/storage/v1/object/public/album-covers/";
   if (album.cover_image_url?.includes(prefix)) {
@@ -764,8 +802,8 @@ export async function updateEntity(
     console.error(`Supabase update ${table} error:`, error, payload);
     return { success: false, error: readableError(error.message) };
   }
-  revalidatePath(path);
-  revalidatePath("/dashboard");
+  safeRevalidatePath(path);
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null, id };
 }
 
@@ -859,14 +897,17 @@ export async function updateSong(
       error: localized(locale, "Нет данных для сохранения.", "There is nothing to save."),
     };
   }
-  const { data, error } = await session.supabase
-    .from("songs")
-    .update(payload)
-    .eq("id", songId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await runActionQuery(
+    "updateSong",
+    "update song",
+    session.supabase
+      .from("songs")
+      .update(payload)
+      .eq("id", songId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error) {
-    console.error("Supabase update song error:", error, payload);
     return { success: false, error: localizedReadableError(locale, error.message) };
   }
   if (!data) {
@@ -936,15 +977,18 @@ export async function updateSongMaterial(
     version: String(formData.get("version") ?? "").trim() || null,
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
-  const { data, error } = await session.supabase
-    .from("song_materials")
-    .update(payload)
-    .eq("id", materialId)
-    .eq("song_id", songId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await runActionQuery(
+    "updateSongMaterial",
+    "update song material",
+    session.supabase
+      .from("song_materials")
+      .update(payload)
+      .eq("id", materialId)
+      .eq("song_id", songId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error) {
-    console.error("Supabase update song material error:", error, payload);
     return { success: false, error: localizedReadableError(locale, error.message) };
   }
   if (!data) {
@@ -1065,14 +1109,17 @@ export async function updateSongCover(
     cover_notes: String(formData.get("cover_notes") ?? "").trim() || null,
   };
   if (coverImageUrl !== undefined) payload.cover_image_url = coverImageUrl;
-  const { data, error } = await session.supabase
-    .from("songs")
-    .update(payload)
-    .eq("id", songId)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await runActionQuery(
+    "updateSongCover",
+    "update song cover",
+    session.supabase
+      .from("songs")
+      .update(payload)
+      .eq("id", songId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error) {
-    console.error("Supabase update song cover error:", error, payload);
     if (uploadedStoragePath) {
       await session.supabase.storage.from("song-covers").remove([uploadedStoragePath]);
     }
@@ -1138,14 +1185,14 @@ export async function deleteSong(songId: string, locale: Locale): Promise<Action
       error: localized(locale, "Песня не найдена или нет прав на удаление.", "Song not found or access denied."),
     };
   }
-  revalidatePath("/songs");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
-  revalidatePath("/events");
+  safeRevalidatePath("/songs");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
+  safeRevalidatePath("/events");
   for (const eventId of eventIds) {
-    revalidatePath(`/events/${eventId}`);
-    revalidatePath(`/events/${eventId}/battle-sheet`);
-    revalidatePath(`/events/${eventId}/setlist`);
+    safeRevalidatePath(`/events/${eventId}`);
+    safeRevalidatePath(`/events/${eventId}/battle-sheet`);
+    safeRevalidatePath(`/events/${eventId}/setlist`);
   }
   const publicCoverPrefix = "/storage/v1/object/public/song-covers/";
   const coverUrl = songRecord?.cover_image_url;
@@ -1334,14 +1381,17 @@ export async function updateEvent(
     }
   }
 
-  const { data: updatedEvent, error } = await session.supabase
-    .from("events")
-    .update(payload)
-    .eq("id", eventId)
-    .select("id")
-    .maybeSingle();
+  const { data: updatedEvent, error } = await runActionQuery(
+    "updateEvent",
+    "update event",
+    session.supabase
+      .from("events")
+      .update(payload)
+      .eq("id", eventId)
+      .select("id")
+      .maybeSingle(),
+  );
   if (error) {
-    console.error("Supabase update event error:", error, payload);
     if (uploadedPosterPath) {
       await session.supabase.storage.from("event-posters").remove([uploadedPosterPath]);
     }
@@ -1358,44 +1408,55 @@ export async function updateEvent(
   }
 
   const setlistNotes = String(formData.get("setlist_notes") ?? "").trim();
-  const { data: setlist, error: setlistReadError } = await session.supabase
-    .from("setlists")
-    .select("id")
-    .eq("event_id", eventId)
-    .limit(1)
-    .maybeSingle();
-  if (setlistReadError) {
-    console.error("Supabase read event setlist error:", setlistReadError);
-    return { success: false, error: readableError(setlistReadError.message) };
-  }
-  if (setlist) {
-    const { error: setlistUpdateError } = await session.supabase
+  const { data: setlist, error: setlistReadError } = await runActionQuery(
+    "updateEvent",
+    "read event setlist notes",
+    session.supabase
       .from("setlists")
-      .update({ notes: setlistNotes || null })
-      .eq("id", setlist.id);
+      .select("id")
+      .eq("event_id", eventId)
+      .limit(1)
+      .maybeSingle(),
+  );
+  if (setlistReadError) {
+    // Event data is already saved. Setlist notes are secondary and must not
+    // turn a successful event save into a timed-out/failed POST.
+  } else if (setlist) {
+    const { error: setlistUpdateError } = await runActionQuery(
+      "updateEvent",
+      "update event setlist notes",
+      session.supabase
+        .from("setlists")
+        .update({ notes: setlistNotes || null })
+        .eq("id", setlist.id),
+    );
     if (setlistUpdateError) {
-      console.error("Supabase update event setlist error:", setlistUpdateError);
-      return { success: false, error: readableError(setlistUpdateError.message) };
+      // Keep the successful event write. The short log from runActionQuery is
+      // enough for diagnostics.
     }
   } else if (setlistNotes) {
-    const { error: setlistInsertError } = await session.supabase
-      .from("setlists")
-      .insert({
-        event_id: eventId,
-        title: `${title} setlist`,
-        notes: setlistNotes,
-      });
+    const { error: setlistInsertError } = await runActionQuery(
+      "updateEvent",
+      "create event setlist notes",
+      session.supabase
+        .from("setlists")
+        .insert({
+          event_id: eventId,
+          title: `${title} setlist`,
+          notes: setlistNotes,
+        }),
+    );
     if (setlistInsertError) {
-      console.error("Supabase create event setlist error:", setlistInsertError);
-      return { success: false, error: readableError(setlistInsertError.message) };
+      // Keep the successful event write. The short log from runActionQuery is
+      // enough for diagnostics.
     }
   }
 
-  revalidatePath("/events");
-  revalidatePath(`/events/${eventId}`);
-  revalidatePath(`/events/${eventId}/battle-sheet`);
-  revalidatePath(`/events/${eventId}/setlist`);
-  revalidatePath("/dashboard");
+  safeRevalidatePath("/events");
+  safeRevalidatePath(`/events/${eventId}`);
+  safeRevalidatePath(`/events/${eventId}/battle-sheet`);
+  safeRevalidatePath(`/events/${eventId}/setlist`);
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null, id: eventId };
 }
 
@@ -1648,11 +1709,11 @@ export async function saveEventSetlist(
     }
   }
 
-  revalidatePath("/events");
-  revalidatePath(`/events/${eventId}`);
-  revalidatePath(`/events/${eventId}/battle-sheet`);
-  revalidatePath(`/events/${eventId}/setlist`);
-  revalidatePath("/dashboard");
+  safeRevalidatePath("/events");
+  safeRevalidatePath(`/events/${eventId}`);
+  safeRevalidatePath(`/events/${eventId}/battle-sheet`);
+  safeRevalidatePath(`/events/${eventId}/setlist`);
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null, id: setlistId, count: items.length };
 }
 
@@ -1679,8 +1740,8 @@ export async function deleteEntity(
     console.error(`Supabase delete ${table} error:`, error);
     return { success: false, error: readableError(error.message) };
   }
-  revalidatePath(path);
-  revalidatePath("/dashboard");
+  safeRevalidatePath(path);
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null };
 }
 
@@ -1700,7 +1761,7 @@ export async function updateLocale(locale: Locale): Promise<ActionState> {
     console.error("Supabase locale update error:", error);
     return { success: false, error: readableError(error.message) };
   }
-  revalidatePath("/", "layout");
+  safeRevalidatePath("/", "layout");
   return { success: true, error: null };
 }
 
@@ -1760,10 +1821,10 @@ export async function updateUserRole(
     return { success: false, error: localizedReadableError(locale, error.message) };
   }
 
-  revalidatePath("/settings");
-  revalidatePath("/settings/users");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath("/settings");
+  safeRevalidatePath("/settings/users");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
   return { success: true, error: null, id: profileId };
 }
 
@@ -1838,8 +1899,8 @@ export async function createPackingList(
     return { success: false, error: readableError(itemsError.message), id: data.id };
   }
 
-  revalidatePath("/packing-lists");
-  revalidatePath("/dashboard");
+  safeRevalidatePath("/packing-lists");
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null, id: data.id };
 }
 
@@ -1864,8 +1925,8 @@ export async function addPackingListItem(
     .select("id")
     .single();
   if (error) return { success: false, error: readableError(error.message) };
-  revalidatePath(`/packing-lists/${packingListId}`);
-  revalidatePath("/packing-lists");
+  safeRevalidatePath(`/packing-lists/${packingListId}`);
+  safeRevalidatePath("/packing-lists");
   return { success: true, error: null, id: data.id };
 }
 
@@ -1886,8 +1947,8 @@ export async function setPackingListItemPacked(
     .eq("id", itemId)
     .eq("packing_list_id", packingListId);
   if (error) return { success: false, error: readableError(error.message) };
-  revalidatePath(`/packing-lists/${packingListId}`);
-  revalidatePath("/packing-lists");
+  safeRevalidatePath(`/packing-lists/${packingListId}`);
+  safeRevalidatePath("/packing-lists");
   return { success: true, error: null };
 }
 
@@ -1907,8 +1968,8 @@ export async function deletePackingListItem(
     .eq("id", itemId)
     .eq("packing_list_id", packingListId);
   if (error) return { success: false, error: readableError(error.message) };
-  revalidatePath(`/packing-lists/${packingListId}`);
-  revalidatePath("/packing-lists");
+  safeRevalidatePath(`/packing-lists/${packingListId}`);
+  safeRevalidatePath("/packing-lists");
   return { success: true, error: null };
 }
 
@@ -1972,10 +2033,10 @@ export async function updateMaterialBackup(
     .select("id")
     .single();
   if (error) return { success: false, error: localizedReadableError(locale, error.message) };
-  revalidatePath(`/songs/${songId}`);
-  revalidatePath("/songs");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath(`/songs/${songId}`);
+  safeRevalidatePath("/songs");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
   return { success: true, error: null, id: data.id };
 }
 
@@ -1986,12 +2047,12 @@ type TaskRelations = {
 };
 
 function revalidateTaskPaths(task: TaskRelations) {
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
-  if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
-  if (task.song_id) revalidatePath(`/songs/${task.song_id}`);
-  if (task.event_id) revalidatePath(`/events/${task.event_id}`);
+  safeRevalidatePath("/tasks");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
+  if (task.project_id) safeRevalidatePath(`/projects/${task.project_id}`);
+  if (task.song_id) safeRevalidatePath(`/songs/${task.song_id}`);
+  if (task.event_id) safeRevalidatePath(`/events/${task.event_id}`);
 }
 
 export async function updateTask(
@@ -2190,10 +2251,10 @@ export async function createTasksFromTemplate(
   if (!rows.length) return { success: true, error: null, count: 0 };
   const { error } = await session.supabase.from("tasks").insert(rows);
   if (error) return { success: false, error: readableError(error.message) };
-  revalidatePath(`/events/${eventId}`);
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  revalidatePath("/my");
+  safeRevalidatePath(`/events/${eventId}`);
+  safeRevalidatePath("/tasks");
+  safeRevalidatePath("/dashboard");
+  safeRevalidatePath("/my");
   return { success: true, error: null, count: rows.length };
 }
 
@@ -2262,10 +2323,10 @@ function epkMediaPayload(formData: FormData, locale: Locale) {
 }
 
 async function revalidateEpkPaths(supabase: ServerSupabaseClient, epkId: string, slug?: string | null) {
-  revalidatePath("/epk");
-  revalidatePath(`/epk/${epkId}`);
+  safeRevalidatePath("/epk");
+  safeRevalidatePath(`/epk/${epkId}`);
   const publicSlug = slug ?? (await supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle()).data?.slug;
-  if (publicSlug) revalidatePath(`/public/epk/${publicSlug}`);
+  if (publicSlug) safeRevalidatePath(`/public/epk/${publicSlug}`);
 }
 
 export async function createEpkProfile(
@@ -2306,7 +2367,7 @@ export async function updateEpkProfile(
     .single();
   if (error) return { success: false, error: localizedReadableError(locale, error.message) };
   await revalidateEpkPaths(session.supabase, data.id, data.slug);
-  if (oldProfile?.slug && oldProfile.slug !== data.slug) revalidatePath(`/public/epk/${oldProfile.slug}`);
+  if (oldProfile?.slug && oldProfile.slug !== data.slug) safeRevalidatePath(`/public/epk/${oldProfile.slug}`);
   return { success: true, error: null, id: data.id };
 }
 
@@ -2323,8 +2384,8 @@ export async function deleteEpkProfile(
   const { data: profile } = await session.supabase.from("epk_profiles").select("slug").eq("id", epkId).maybeSingle();
   const { error } = await session.supabase.from("epk_profiles").delete().eq("id", epkId);
   if (error) return { success: false, error: localizedReadableError(locale, error.message) };
-  revalidatePath("/epk");
-  if (profile?.slug) revalidatePath(`/public/epk/${profile.slug}`);
+  safeRevalidatePath("/epk");
+  if (profile?.slug) safeRevalidatePath(`/public/epk/${profile.slug}`);
   return { success: true, error: null };
 }
 
@@ -2451,12 +2512,12 @@ function copyItemPayload(formData: FormData, locale: Locale) {
 }
 
 function revalidateCopyPaths(item?: { id?: string | null; event_id?: string | null; album_id?: string | null; song_id?: string | null; epk_id?: string | null }) {
-  revalidatePath("/copy");
-  if (item?.id) revalidatePath(`/copy/${item.id}`);
-  if (item?.event_id) revalidatePath(`/events/${item.event_id}`);
-  if (item?.album_id) revalidatePath(`/albums/${item.album_id}`);
-  if (item?.song_id) revalidatePath(`/songs/${item.song_id}`);
-  if (item?.epk_id) revalidatePath(`/epk/${item.epk_id}`);
+  safeRevalidatePath("/copy");
+  if (item?.id) safeRevalidatePath(`/copy/${item.id}`);
+  if (item?.event_id) safeRevalidatePath(`/events/${item.event_id}`);
+  if (item?.album_id) safeRevalidatePath(`/albums/${item.album_id}`);
+  if (item?.song_id) safeRevalidatePath(`/songs/${item.song_id}`);
+  if (item?.epk_id) safeRevalidatePath(`/epk/${item.epk_id}`);
 }
 
 export async function createCopyItem(
@@ -2635,16 +2696,16 @@ function contentCalendarPayload(formData: FormData, locale: Locale) {
 }
 
 function revalidateContentCalendarPaths(item?: { id?: string | null; copy_item_id?: string | null; event_id?: string | null; album_id?: string | null; song_id?: string | null; epk_id?: string | null }) {
-  revalidatePath("/content-calendar");
-  if (item?.id) revalidatePath(`/content-calendar/${item.id}`);
+  safeRevalidatePath("/content-calendar");
+  if (item?.id) safeRevalidatePath(`/content-calendar/${item.id}`);
   if (item?.copy_item_id) {
-    revalidatePath("/copy");
-    revalidatePath(`/copy/${item.copy_item_id}`);
+    safeRevalidatePath("/copy");
+    safeRevalidatePath(`/copy/${item.copy_item_id}`);
   }
-  if (item?.event_id) revalidatePath(`/events/${item.event_id}`);
-  if (item?.album_id) revalidatePath(`/albums/${item.album_id}`);
-  if (item?.song_id) revalidatePath(`/songs/${item.song_id}`);
-  if (item?.epk_id) revalidatePath(`/epk/${item.epk_id}`);
+  if (item?.event_id) safeRevalidatePath(`/events/${item.event_id}`);
+  if (item?.album_id) safeRevalidatePath(`/albums/${item.album_id}`);
+  if (item?.song_id) safeRevalidatePath(`/songs/${item.song_id}`);
+  if (item?.epk_id) safeRevalidatePath(`/epk/${item.epk_id}`);
 }
 
 export async function createContentCalendarItem(
@@ -2835,14 +2896,14 @@ function filePayload(formData: FormData, locale: Locale) {
 }
 
 function revalidateFilePaths(file?: ({ id?: string | null } & FileRelationPayload) | null) {
-  revalidatePath("/files");
-  if (file?.id) revalidatePath(`/files/${file.id}`);
-  if (file?.event_id) revalidatePath(`/events/${file.event_id}`);
-  if (file?.album_id) revalidatePath(`/albums/${file.album_id}`);
-  if (file?.song_id) revalidatePath(`/songs/${file.song_id}`);
-  if (file?.epk_id) revalidatePath(`/epk/${file.epk_id}`);
-  if (file?.copy_item_id) revalidatePath(`/copy/${file.copy_item_id}`);
-  if (file?.content_calendar_item_id) revalidatePath(`/content-calendar/${file.content_calendar_item_id}`);
+  safeRevalidatePath("/files");
+  if (file?.id) safeRevalidatePath(`/files/${file.id}`);
+  if (file?.event_id) safeRevalidatePath(`/events/${file.event_id}`);
+  if (file?.album_id) safeRevalidatePath(`/albums/${file.album_id}`);
+  if (file?.song_id) safeRevalidatePath(`/songs/${file.song_id}`);
+  if (file?.epk_id) safeRevalidatePath(`/epk/${file.epk_id}`);
+  if (file?.copy_item_id) safeRevalidatePath(`/copy/${file.copy_item_id}`);
+  if (file?.content_calendar_item_id) safeRevalidatePath(`/content-calendar/${file.content_calendar_item_id}`);
 }
 
 function getSelectedFile(formData: FormData) {
@@ -3142,9 +3203,9 @@ export async function assignEventTechRider(
         : localized(locale, "Концерт не найден или нет прав на редактирование.", "Event not found or access denied."),
     };
   }
-  revalidatePath(`/events/${eventId}`);
-  revalidatePath(`/events/${eventId}/battle-sheet`);
-  revalidatePath("/dashboard");
+  safeRevalidatePath(`/events/${eventId}`);
+  safeRevalidatePath(`/events/${eventId}/battle-sheet`);
+  safeRevalidatePath("/dashboard");
   return { success: true, error: null, id: eventId };
 }
 
