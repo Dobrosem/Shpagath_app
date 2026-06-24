@@ -7,7 +7,8 @@ type StorageSource = {
 };
 
 const SIGNED_URL_TIMEOUT_MS = 3000;
-const PREVIEW_URL_TIMEOUT_MS = 1500;
+const PREVIEW_URL_TIMEOUT_MS = 2500;
+const PUBLIC_STORAGE_BUCKETS = new Set(["song-covers", "event-posters"]);
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -27,6 +28,14 @@ function describeError(error: unknown) {
 function compactObjectPath(objectPath: string) {
   if (objectPath.length <= 96) return objectPath;
   return `${objectPath.slice(0, 48)}...${objectPath.slice(-32)}`;
+}
+
+function getPublicObjectUrl(
+  supabase: ServerSupabaseClient,
+  bucket: string,
+  objectPath: string,
+) {
+  return supabase.storage.from(bucket).getPublicUrl(objectPath).data.publicUrl ?? null;
 }
 
 function storageSource(value: string, bucket: string): StorageSource {
@@ -84,7 +93,7 @@ export async function tryCreateSignedUrl(
     );
     if (error) {
       const details = describeError(error);
-      console.error("Supabase signed URL error:", {
+      console.warn("Supabase signed URL warning:", {
         bucket,
         object: compactObjectPath(objectPath),
         status: details.status,
@@ -95,7 +104,7 @@ export async function tryCreateSignedUrl(
     return data?.signedUrl ?? null;
   } catch (error) {
     const details = describeError(error);
-    console.error("Supabase signed URL error:", {
+    console.warn("Supabase signed URL warning:", {
       bucket,
       object: compactObjectPath(objectPath),
       status: details.status,
@@ -115,6 +124,9 @@ export async function getStorageDisplayUrl(
   if (!source) return null;
   const { fallbackUrl, objectPath } = storageSource(source, bucket);
   if (!objectPath) return fallbackUrl;
+  if (PUBLIC_STORAGE_BUCKETS.has(bucket)) {
+    return getPublicObjectUrl(supabase, bucket, objectPath) ?? fallbackUrl;
+  }
   return await tryCreateSignedUrl(supabase, bucket, objectPath, 60 * 60, timeoutMs) ?? fallbackUrl;
 }
 
