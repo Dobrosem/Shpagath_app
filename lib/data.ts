@@ -1,5 +1,6 @@
+import { cookies } from "next/headers";
 import { createClient } from "./supabase/server";
-import { demoProfile, events, people, projects, songs, tasks } from "./demo-data";
+import { events, people, projects, songs, tasks } from "./demo-data";
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
 import { getStorageDisplayUrl, getStoragePreviewUrl } from "./storage";
 import type {
@@ -60,19 +61,48 @@ type AuthUser = {
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
 };
+type AuthReadResult =
+  | { status: "ok"; user: AuthUser }
+  | { status: "no_session"; user: null }
+  | { status: "auth_error"; user: null };
 const AUTH_USER_TIMEOUT_MS = 2000;
 const PROFILE_READ_TIMEOUT_MS = 2500;
 const DB_READ_TIMEOUT_MS = 8000;
 
-function unavailableProfile(): Profile {
+async function hasSupabaseAuthCookie() {
+  const cookieStore = await cookies();
+  return cookieStore
+    .getAll()
+    .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+}
+
+function unavailableProfile(authStatus: NonNullable<Profile["auth_status"]>): Profile {
   return {
-    ...demoProfile,
-    id: "auth-unavailable",
+    id: authStatus,
     email: "",
-    full_name: "Unknown user",
+    full_name: authStatus === "no_session" ? "Guest" : "Session temporarily unavailable",
     role: "guest",
     locale: "ru",
+    auth_status: authStatus,
   };
+}
+
+function reportAuthState({
+  status,
+  hasAuthCookie,
+  user,
+}: {
+  status: AuthReadResult["status"];
+  hasAuthCookie: boolean;
+  user?: AuthUser | null;
+}) {
+  if (status === "ok") return;
+  console.warn("Supabase auth state:", {
+    hasAuthCookie,
+    authState: status,
+    authUserId: user?.id ?? null,
+    authUserEmail: user?.email ?? null,
+  });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -129,25 +159,29 @@ export async function safeSupabaseQuery<T>(
   }
 }
 
-async function getCurrentUser(): Promise<AuthUser | null> {
+async function getCurrentUser(): Promise<AuthReadResult> {
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (!supabase) return { status: "auth_error", user: null };
+  const hasAuthCookie = await hasSupabaseAuthCookie();
   try {
     const result = await withTimeout(supabase.auth.getUser(), AUTH_USER_TIMEOUT_MS);
     if (result.error || !result.data.user) {
       reportReadError("auth user", result.error);
-      return null;
+      const status = hasAuthCookie ? "auth_error" : "no_session";
+      reportAuthState({ status, hasAuthCookie });
+      return { status, user: null };
     }
-    return result.data.user;
+    return { status: "ok", user: result.data.user };
   } catch (error) {
     reportReadError("auth user", error);
-    return null;
+    const status = hasAuthCookie ? "auth_error" : "no_session";
+    reportAuthState({ status, hasAuthCookie });
+    return { status, user: null };
   }
 }
 
 function profileFallbackForUser(user: AuthUser): Profile {
   return {
-    ...demoProfile,
     id: user.id,
     email: user.email ?? "",
     full_name:
@@ -155,6 +189,8 @@ function profileFallbackForUser(user: AuthUser): Profile {
       user.email?.split("@")[0] ||
       "Unknown user",
     role: "guest",
+    locale: "ru",
+    auth_status: "profile_error",
   };
 }
 
@@ -169,11 +205,12 @@ function reportProfileMismatch(user: AuthUser, profile: Pick<Profile, "id" | "em
 
 export async function getProfile(): Promise<Profile> {
   const supabase = await createClient();
-  if (!supabase) return unavailableProfile();
-  const user = await getCurrentUser();
-  if (!user) {
-    return unavailableProfile();
+  if (!supabase) return unavailableProfile("unconfigured");
+  const auth = await getCurrentUser();
+  if (auth.status !== "ok") {
+    return unavailableProfile(auth.status);
   }
+  const user = auth.user;
 
   let { data, error } = await safeSupabaseQuery(
     "profile",
@@ -186,6 +223,8 @@ export async function getProfile(): Promise<Profile> {
     PROFILE_READ_TIMEOUT_MS,
   );
 
+  if (error) return { ...profileFallbackForUser(user), auth_status: "profile_error" };
+
   if (!data) {
     const { error: ensureError } = await safeSupabaseQuery(
       "ensure_profile",
@@ -194,6 +233,7 @@ export async function getProfile(): Promise<Profile> {
       PROFILE_READ_TIMEOUT_MS,
     );
     reportReadError("ensure_profile", ensureError);
+    if (ensureError) return { ...profileFallbackForUser(user), auth_status: "profile_error" };
     if (!ensureError) {
       const result = await safeSupabaseQuery(
         "profile retry",
@@ -210,12 +250,13 @@ export async function getProfile(): Promise<Profile> {
     }
   }
   reportReadError("profile", error);
+  if (error) return { ...profileFallbackForUser(user), auth_status: "profile_error" };
   if (data) {
     if (data.id !== user.id) {
       reportProfileMismatch(user, data);
-      return profileFallbackForUser(user);
+      return { ...profileFallbackForUser(user), auth_status: "mismatch" };
     }
-    return { ...data, locale: data.locale === "en" ? "en" : "ru" };
+    return { ...data, locale: data.locale === "en" ? "en" : "ru", auth_status: "ok" };
   }
   return profileFallbackForUser(user);
 }
@@ -1101,8 +1142,9 @@ export async function getMyPageSummary(): Promise<MyPageSummary> {
     };
   }
 
-  const user = await getCurrentUser();
-  if (!user) return emptyMyPageSummary();
+  const auth = await getCurrentUser();
+  if (auth.status !== "ok") return emptyMyPageSummary();
+  const user = auth.user;
 
   const [taskResult, materialResult, accessResult, rehearsalResult] = await Promise.all([
     safeSupabaseQuery(
@@ -1322,10 +1364,11 @@ export async function getMyWorkspace() {
     return { tasks, songs, materials: [] as Material[], events, rehearsals: [] as Rehearsal[] };
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
+  const auth = await getCurrentUser();
+  if (auth.status !== "ok") {
     return { tasks: [] as Task[], songs: [] as Song[], materials: [] as Material[], events: [] as Event[], rehearsals: [] as Rehearsal[] };
   }
+  const user = auth.user;
 
   const [taskResult, materialResult, accessResult, rehearsalResult] = await Promise.all([
     safeSupabaseQuery(

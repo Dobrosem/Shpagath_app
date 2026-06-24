@@ -1,4 +1,4 @@
-import type { Role } from "./types";
+import type { Profile, Role } from "./types";
 
 export const roleValues = [
   "admin",
@@ -37,4 +37,11 @@ export function canDeleteOperationalData(role?: Role | null) {
 
 export function canManageWorkspaceContent(role?: Role | null) {
   return role === "admin" || role === "manager" || role === "member";
+}
+
+export function isProfileSessionUnavailable(profile?: Pick<Profile, "auth_status"> | null) {
+  return Boolean(
+    profile?.auth_status
+    && !["ok", "no_session"].includes(profile.auth_status),
+  );
 }

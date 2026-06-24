@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Check, Circle, ExternalLink, MessageSquare, Shield } from "lucide-react";
 import type { Material, Profile, Role } from "@/lib/types";
 import { getProfile } from "@/lib/data";
+import { isProfileSessionUnavailable } from "@/lib/roles";
 import { StatusBadge } from "./ui";
 
 export async function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,13 @@ export async function ProtectedRoute({ children }: { children: React.ReactNode }
 }
 
 export function RoleGuard({ profile, allow, children, fallback = null }: { profile: Profile; allow: Role[]; children: React.ReactNode; fallback?: React.ReactNode }) {
+  if (isProfileSessionUnavailable(profile)) {
+    return <section className="metal-card p-6 text-sm text-zinc-500">
+      {profile.locale === "en"
+        ? "Could not confirm your session. Refresh the page."
+        : "Не удалось подтвердить сессию. Обновите страницу."}
+    </section>;
+  }
   return allow.includes(profile.role) ? children : fallback;
 }
 

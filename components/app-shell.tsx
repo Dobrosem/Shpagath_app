@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 import { useI18n } from "./i18n-provider";
 import { translateLiteral } from "@/lib/i18n";
-import { canManageFinance } from "@/lib/roles";
+import { canManageFinance, isProfileSessionUnavailable } from "@/lib/roles";
 
 const navigationGroups = [
   {
@@ -109,6 +109,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
   const router = useRouter();
   const pathname = usePathname();
   const { locale, t } = useI18n();
+  const sessionUnavailable = isProfileSessionUnavailable(profile);
   async function signOut() {
     await createClient()?.auth.signOut();
     router.push("/login");
@@ -139,7 +140,22 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
         <button className="lg:hidden" onClick={() => setOpen(true)} aria-label={t("common.openMenu")}><Menu size={21} /></button>
         <div className="hidden items-center gap-2 text-[10px] uppercase tracking-[.15em] text-zinc-700 lg:flex"><SlidersHorizontal size={13} /> {t("common.internalPortal")}</div>
         <div className="flex items-center gap-3">
-          <div className="hidden text-right sm:block"><p className="text-xs text-zinc-300">{profile.full_name}</p><p className="text-[9px] uppercase tracking-wider text-zinc-600">{translateLiteral(locale, profile.role)}</p></div>
+          <div className="hidden text-right sm:block">
+            <p className="text-xs text-zinc-300">
+              {sessionUnavailable
+                ? locale === "en" ? "Session temporarily unavailable" : "Сессия временно недоступна"
+                : profile.full_name}
+            </p>
+            {sessionUnavailable
+              ? <button
+                type="button"
+                className="text-[9px] uppercase tracking-wider text-zinc-600 transition hover:text-zinc-300"
+                onClick={() => window.location.reload()}
+              >
+                {locale === "en" ? "Refresh" : "Обновить"}
+              </button>
+              : <p className="text-[9px] uppercase tracking-wider text-zinc-600">{translateLiteral(locale, profile.role)}</p>}
+          </div>
           <div className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-zinc-800 text-[10px] font-semibold">{initials(profile.full_name)}</div>
         </div>
       </header>

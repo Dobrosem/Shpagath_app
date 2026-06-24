@@ -57,6 +57,7 @@ export interface Profile {
   role: Role;
   locale: Locale;
   avatar_url?: string | null;
+  auth_status?: "ok" | "no_session" | "auth_error" | "profile_error" | "mismatch" | "unconfigured";
 }
 
 export interface Project {
