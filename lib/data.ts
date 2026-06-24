@@ -1,4 +1,3 @@
-import { cache } from "react";
 import { createClient } from "./supabase/server";
 import { demoProfile, events, people, projects, songs, tasks } from "./demo-data";
 import { buildRedZoneIssues, criticalMaterialTypes } from "./red-zone";
@@ -65,6 +64,17 @@ const AUTH_USER_TIMEOUT_MS = 2000;
 const PROFILE_READ_TIMEOUT_MS = 2500;
 const DB_READ_TIMEOUT_MS = 8000;
 
+function unavailableProfile(): Profile {
+  return {
+    ...demoProfile,
+    id: "auth-unavailable",
+    email: "",
+    full_name: "Unknown user",
+    role: "guest",
+    locale: "ru",
+  };
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
     promise,
@@ -119,7 +129,7 @@ export async function safeSupabaseQuery<T>(
   }
 }
 
-const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
+async function getCurrentUser(): Promise<AuthUser | null> {
   const supabase = await createClient();
   if (!supabase) return null;
   try {
@@ -133,14 +143,36 @@ const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     reportReadError("auth user", error);
     return null;
   }
-});
+}
 
-export const getProfile = cache(async (): Promise<Profile> => {
+function profileFallbackForUser(user: AuthUser): Profile {
+  return {
+    ...demoProfile,
+    id: user.id,
+    email: user.email ?? "",
+    full_name:
+      String(user.user_metadata?.full_name ?? "") ||
+      user.email?.split("@")[0] ||
+      "Unknown user",
+    role: "guest",
+  };
+}
+
+function reportProfileMismatch(user: AuthUser, profile: Pick<Profile, "id" | "email" | "role">) {
+  console.error("Supabase auth/profile mismatch:", {
+    authUserId: user.id,
+    profileId: profile.id,
+    profileEmail: profile.email ?? null,
+    role: profile.role ?? null,
+  });
+}
+
+export async function getProfile(): Promise<Profile> {
   const supabase = await createClient();
-  if (!supabase) return demoProfile;
+  if (!supabase) return unavailableProfile();
   const user = await getCurrentUser();
   if (!user) {
-    return { ...demoProfile, role: "guest" };
+    return unavailableProfile();
   }
 
   let { data, error } = await safeSupabaseQuery(
@@ -178,15 +210,15 @@ export const getProfile = cache(async (): Promise<Profile> => {
     }
   }
   reportReadError("profile", error);
-  return data
-    ? { ...data, locale: data.locale === "en" ? "en" : "ru" }
-    : {
-        ...demoProfile,
-        id: user.id,
-        email: user.email ?? demoProfile.email,
-        full_name: String(user.user_metadata?.full_name ?? demoProfile.full_name),
-      };
-});
+  if (data) {
+    if (data.id !== user.id) {
+      reportProfileMismatch(user, data);
+      return profileFallbackForUser(user);
+    }
+    return { ...data, locale: data.locale === "en" ? "en" : "ru" };
+  }
+  return profileFallbackForUser(user);
+}
 
 export async function getProfiles(): Promise<Profile[]> {
   const supabase = await createClient();

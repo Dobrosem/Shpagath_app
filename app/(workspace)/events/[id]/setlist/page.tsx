@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
+import { DetailLoadError } from "@/components/detail-load-error";
 import { SetlistBuilder } from "@/components/setlist-builder";
 import { PageHeader } from "@/components/ui";
 import { getEventSetlist, getProfile, getSetlistSongOptions, safeSupabaseQuery } from "@/lib/data";
@@ -31,7 +32,14 @@ export default async function EventSetlistPage({
       .maybeSingle(),
     { data: null, error: null },
   );
-  if (error || !event) notFound();
+  if (error) {
+    return <DetailLoadError
+      title={profile.locale === "en" ? "Could not load event setlist" : "Не удалось загрузить сетлист концерта"}
+      description={profile.locale === "en" ? "Refresh the page. If the problem repeats, check Supabase connectivity and access." : "Обновите страницу. Если ошибка повторится, проверьте соединение с Supabase и права доступа."}
+      actionLabel={profile.locale === "en" ? "Refresh" : "Обновить"}
+    />;
+  }
+  if (!event) notFound();
 
   const t = translator(profile.locale);
   const canEdit = canDeleteOperationalData(profile.role);
