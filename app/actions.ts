@@ -21,6 +21,8 @@ type AllowedTable = (typeof allowedTables)[number];
 const ACTION_AUTH_TIMEOUT_MS = 3000;
 const ACTION_DB_TIMEOUT_MS = 4500;
 const ACTION_REVALIDATE_READ_TIMEOUT_MS = 1500;
+const ACTION_SETLIST_DB_TIMEOUT_MS = 3000;
+const ACTION_SETLIST_BATCH_SIZE = 25;
 
 const numericFields = new Set([
   "bpm",
@@ -92,6 +94,33 @@ function reportActionReadError(entity: string, error: unknown) {
   });
 }
 
+function reportActionMutationError(
+  action: string,
+  context: Record<string, string | number | null | undefined>,
+  error: unknown,
+) {
+  if (!error || typeof error !== "object") {
+    console.error(`Supabase ${action} error:`, {
+      ...context,
+      message: String(error ?? "Unknown error"),
+    });
+    return;
+  }
+  const typedError = error as {
+    code?: string;
+    message?: string;
+    name?: string;
+    status?: number | string;
+  };
+  console.error(`Supabase ${action} error:`, {
+    ...context,
+    code: typedError.code ?? null,
+    name: typedError.name ?? null,
+    status: typedError.status ?? null,
+    message: typedError.message ?? "Unknown error",
+  });
+}
+
 async function ensureAuthenticatedProfile() {
   const supabase = await createClient();
   if (!supabase) {
@@ -117,24 +146,42 @@ async function ensureAuthenticatedProfile() {
     return { error: "Сессия истекла. Войдите снова.", supabase, user: null };
   }
 
-  const { error: ensureError } = await supabase.rpc("ensure_profile");
-  if (ensureError) {
-    console.error("ensure_profile RPC error:", ensureError);
-    const { error: fallbackError } = await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        email: user.email ?? "",
-        full_name:
-          String(user.user_metadata?.full_name ?? "") ||
-          user.email?.split("@")[0] ||
-          "Участник",
-        role: "guest",
-        locale: "ru",
-      },
-      { onConflict: "id", ignoreDuplicates: true },
+  let ensureError = null;
+  try {
+    const result = await withActionTimeout(
+      supabase.rpc("ensure_profile"),
+      ACTION_DB_TIMEOUT_MS,
     );
+    ensureError = result.error;
+  } catch (error) {
+    ensureError = error;
+  }
+  if (ensureError) {
+    reportActionReadError("ensure profile", ensureError);
+    let fallbackError = null;
+    try {
+      const result = await withActionTimeout(
+        supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            email: user.email ?? "",
+            full_name:
+              String(user.user_metadata?.full_name ?? "") ||
+              user.email?.split("@")[0] ||
+              "Участник",
+            role: "guest",
+            locale: "ru",
+          },
+          { onConflict: "id", ignoreDuplicates: true },
+        ),
+        ACTION_DB_TIMEOUT_MS,
+      );
+      fallbackError = result.error;
+    } catch (error) {
+      fallbackError = error;
+    }
     if (fallbackError) {
-      console.error("Profile fallback error:", fallbackError);
+      reportActionReadError("profile fallback", fallbackError);
       return {
         error: "Не удалось подготовить профиль пользователя. Примените миграцию 002.",
         supabase,
@@ -150,16 +197,18 @@ type ServerSupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>
 
 async function readCurrentRole(session: { supabase: ServerSupabaseClient | null; user: { id: string } | null }) {
   if (!session.supabase || !session.user) return null;
-  const { data, error } = await session.supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", session.user.id)
-    .maybeSingle();
+  const { data, error } = await withActionTimeout(
+    session.supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle(),
+    ACTION_DB_TIMEOUT_MS,
+  ).catch((error) => {
+    return { data: null, error };
+  });
   if (error) {
-    console.error("Supabase read current action role error:", {
-      code: error.code,
-      message: error.message,
-    });
+    reportActionReadError("read current action role", error);
     return null;
   }
   return normalizeRole(data?.role);
@@ -1363,6 +1412,54 @@ export async function saveEventSetlist(
   const locale = formData.get("locale") === "en" ? "en" : "ru";
   const accessError = await requireRole(session, canDeleteOperationalData, locale);
   if (accessError) return { success: false, error: accessError };
+  const saveError = localized(
+    locale,
+    "Не удалось сохранить сетлист. Попробуйте ещё раз.",
+    "Could not save the setlist. Try again.",
+  );
+  const runSetlistQuery = async <T extends { error: unknown }>(
+    operation: string,
+    setlistId: string | null,
+    query: PromiseLike<T>,
+  ) => {
+    try {
+      const result = await withActionTimeout(query, ACTION_SETLIST_DB_TIMEOUT_MS);
+      if (result.error) {
+        reportActionMutationError("save event setlist", {
+          action: "saveEventSetlist",
+          operation,
+          eventId,
+          setlistId,
+        }, result.error);
+      }
+      return result;
+    } catch (error) {
+      reportActionMutationError("save event setlist", {
+        action: "saveEventSetlist",
+        operation,
+        eventId,
+        setlistId,
+      }, error);
+      return { error } as T;
+    }
+  };
+  const runSetlistMutationBatch = async (
+    operation: string,
+    setlistId: string,
+    mutations: Array<() => PromiseLike<{ error: unknown }>>,
+  ) => {
+    for (let index = 0; index < mutations.length; index += ACTION_SETLIST_BATCH_SIZE) {
+      const chunk = mutations.slice(index, index + ACTION_SETLIST_BATCH_SIZE);
+      const results = await Promise.all(
+        chunk.map((mutation, mutationIndex) =>
+          runSetlistQuery(`${operation}:${index + mutationIndex}`, setlistId, mutation()),
+        ),
+      );
+      const failed = results.find((result) => result.error);
+      if (failed) return failed.error;
+    }
+    return null;
+  };
   const rawItems = String(formData.get("items") ?? "[]");
   let parsedItems: unknown;
   try {
@@ -1407,13 +1504,16 @@ export async function saveEventSetlist(
     };
   }
 
-  const eventResult = await session.supabase
-    .from("events")
-    .select("id,title")
-    .eq("id", eventId)
-    .maybeSingle();
+  const eventResult = await runSetlistQuery(
+    "read event",
+    null,
+    session.supabase
+      .from("events")
+      .select("id,title")
+      .eq("id", eventId)
+      .maybeSingle(),
+  );
   if (eventResult.error || !eventResult.data) {
-    console.error("Supabase read setlist event error:", eventResult.error);
     return {
       success: false,
       error: locale === "en" ? "Event not found or access denied." : "Концерт не найден или нет доступа.",
@@ -1421,12 +1521,15 @@ export async function saveEventSetlist(
   }
 
   if (songIds.length) {
-    const songsResult = await session.supabase
-      .from("songs")
-      .select("id")
-      .in("id", songIds);
-    if (songsResult.error || songsResult.data.length !== songIds.length) {
-      console.error("Supabase validate setlist songs error:", songsResult.error);
+    const songsResult = await runSetlistQuery(
+      "validate songs",
+      null,
+      session.supabase
+        .from("songs")
+        .select("id")
+        .in("id", songIds),
+    );
+    if (songsResult.error || (songsResult.data ?? []).length !== songIds.length) {
       return {
         success: false,
         error: locale === "en"
@@ -1436,104 +1539,112 @@ export async function saveEventSetlist(
     }
   }
 
-  const setlistResult = await session.supabase
-    .from("setlists")
-    .select("id")
-    .eq("event_id", eventId)
-    .limit(1)
-    .maybeSingle();
+  const setlistResult = await runSetlistQuery(
+    "read setlist",
+    null,
+    session.supabase
+      .from("setlists")
+      .select("id")
+      .eq("event_id", eventId)
+      .limit(1)
+      .maybeSingle(),
+  );
   if (setlistResult.error) {
-    console.error("Supabase read setlist error:", setlistResult.error);
-    return { success: false, error: readableError(setlistResult.error.message) };
+    return { success: false, error: saveError };
   }
 
   let setlistId = setlistResult.data?.id;
   if (!setlistId && items.length) {
-    const createResult = await session.supabase
-      .from("setlists")
-      .insert({ event_id: eventId, title: `${eventResult.data.title} setlist` })
-      .select("id")
-      .single();
+    const createResult = await runSetlistQuery(
+      "create setlist",
+      null,
+      session.supabase
+        .from("setlists")
+        .insert({ event_id: eventId, title: `${eventResult.data.title} setlist` })
+        .select("id")
+        .single(),
+    );
     if (createResult.error || !createResult.data) {
-      console.error("Supabase create setlist error:", createResult.error);
       return {
         success: false,
-        error: locale === "en"
-          ? "Could not create the event setlist."
-          : "Не удалось создать сетлист концерта.",
+        error: saveError,
       };
     }
     setlistId = createResult.data.id;
   }
 
   if (setlistId) {
-    const existingResult = await session.supabase
-      .from("setlist_items")
-      .select("id,song_id,order_index")
-      .eq("setlist_id", setlistId)
-      .order("order_index");
+    const existingResult = await runSetlistQuery(
+      "read setlist items",
+      setlistId,
+      session.supabase
+        .from("setlist_items")
+        .select("id,song_id,order_index")
+        .eq("setlist_id", setlistId)
+        .order("order_index"),
+    );
     if (existingResult.error) {
-      console.error("Supabase read setlist items error:", existingResult.error);
-      return { success: false, error: readableError(existingResult.error.message) };
+      return { success: false, error: saveError };
     }
 
     const desiredIds = new Set(songIds);
+    const existingItems = existingResult.data ?? [];
     const existingBySong = new Map(
-      (existingResult.data ?? []).map((item) => [item.song_id, item]),
+      existingItems.map((item) => [item.song_id, item]),
     );
-    const removedIds = (existingResult.data ?? [])
+    const removedIds = existingItems
       .filter((item) => !desiredIds.has(item.song_id))
       .map((item) => item.id);
-    if (removedIds.length) {
-      const removeResult = await session.supabase
-        .from("setlist_items")
-        .delete()
-        .in("id", removedIds);
-      if (removeResult.error) {
-        console.error("Supabase remove setlist items error:", removeResult.error);
-        return { success: false, error: readableError(removeResult.error.message) };
-      }
-    }
 
-    const keptItems = (existingResult.data ?? []).filter((item) => desiredIds.has(item.song_id));
     const temporaryStart = Math.max(
       1000,
-      ...keptItems.map((item) => item.order_index + 1000),
+      ...existingItems.map((item) => item.order_index + 1000),
     );
-    for (const [index, item] of keptItems.entries()) {
-      const temporaryResult = await session.supabase
-        .from("setlist_items")
-        .update({ order_index: temporaryStart + index })
-        .eq("id", item.id);
-      if (temporaryResult.error) {
-        console.error("Supabase prepare setlist order error:", temporaryResult.error);
-        return { success: false, error: readableError(temporaryResult.error.message) };
-      }
+    if (existingItems.length) {
+      const temporaryError = await runSetlistMutationBatch(
+        "prepare setlist order",
+        setlistId,
+        existingItems.map((item, index) => () =>
+          session.supabase
+            .from("setlist_items")
+            .update({ order_index: temporaryStart + index })
+            .eq("id", item.id),
+        ),
+      );
+      if (temporaryError) return { success: false, error: saveError };
     }
 
-    for (const [index, item] of items.entries()) {
-      const payload = {
-        order_index: index,
-        live_version: item.live_version || null,
-        notes: item.notes || null,
-      };
-      const existing = existingBySong.get(item.song_id);
-      const result = existing
-        ? await session.supabase.from("setlist_items").update(payload).eq("id", existing.id)
-        : await session.supabase.from("setlist_items").insert({
-            ...payload,
-            setlist_id: setlistId,
-            song_id: item.song_id,
-          });
-      if (result.error) {
-        console.error("Supabase save setlist item error:", result.error);
-        return {
-          success: false,
-          error: locale === "en"
-            ? "Could not save the setlist. Check your access and try again."
-            : "Не удалось сохранить сетлист. Проверьте доступ и попробуйте снова.",
+    const saveItemError = await runSetlistMutationBatch(
+      "save setlist row",
+      setlistId,
+      items.map((item, index) => () => {
+        const payload = {
+          order_index: index,
+          live_version: item.live_version || null,
+          notes: item.notes || null,
         };
-      }
+        const existing = existingBySong.get(item.song_id);
+        return existing
+          ? session.supabase.from("setlist_items").update(payload).eq("id", existing.id)
+          : session.supabase.from("setlist_items").insert({
+              ...payload,
+              setlist_id: setlistId,
+              song_id: item.song_id,
+            });
+      }),
+    );
+    if (saveItemError) return { success: false, error: saveError };
+
+    if (removedIds.length) {
+      const removeResult = await runSetlistQuery(
+        "remove stale setlist rows",
+        setlistId,
+        session.supabase
+          .from("setlist_items")
+          .delete()
+          .in("id", removedIds),
+      );
+      if (removeResult.error) return { success: false, error: saveError };
     }
   }
 

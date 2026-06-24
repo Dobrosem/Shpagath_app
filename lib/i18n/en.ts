@@ -182,7 +182,7 @@ export const en: Record<TranslationKey, string> = {
   "setlistBuilder.liveVersion": "Live version",
   "setlistBuilder.performanceNotes": "Performance notes",
   "setlistBuilder.save": "Save setlist",
-  "setlistBuilder.saved": "Setlist saved",
+  "setlistBuilder.saved": "Saved",
   "setlistBuilder.empty": "No songs in the setlist yet",
   "setlistBuilder.noSongs": "There are no songs in the catalog yet",
   "setlistBuilder.addSongsHint": "Add songs to the catalog first",

@@ -266,7 +266,7 @@ export const ru = {
   "setlistBuilder.liveVersion": "Концертная версия",
   "setlistBuilder.performanceNotes": "Заметки по исполнению",
   "setlistBuilder.save": "Сохранить сетлист",
-  "setlistBuilder.saved": "Сетлист сохранён",
+  "setlistBuilder.saved": "Сохранено",
   "setlistBuilder.empty": "Пока нет песен в сетлисте",
   "setlistBuilder.noSongs": "В каталоге пока нет песен",
   "setlistBuilder.addSongsHint": "Сначала добавьте песни в каталог",
